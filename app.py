@@ -1,22 +1,35 @@
 # Load libraries.
 import streamlit as st
-import pandas as pd
 
 # Logo
 st.logo(image = 'assets/Letter.png', size = 'large')
 
-# Title
-st.title('Rento\'s Rink')
+# Set defaults.
+st.set_page_config(layout = 'wide')
 
-# Load data.
-@st.cache_data
-def load_skaters_xG():
-    return pd.read_csv('data/skaters_xG.csv')
-skaters_xG = load_skaters_xG()
-
-# Create scatter plot.
-st.scatter_chart(
-    skaters_xG,
-    x = "ixGF_20242025_2",
-    y = "iGF_20242025_2",
+# Set up pages.
+index_page    = st.Page(
+    page  = 'views/index.py',
+    title = 'Rento\'s Rink',
+    icon  = '🏠',
+    default = True
 )
+skaters_xg_page = st.Page(
+    page  = 'views/skaters_xg.py',
+    title = 'Skaters xG',
+    icon  = '🏒'
+)
+goalies_xg_page = st.Page(
+    page  = 'views/goalies_xg.py',
+    title = 'Goalies xG',
+    icon  = '🏒'
+)
+
+# Set up navigation.
+pg = st.navigation(
+    {
+        'About': [index_page],
+        'Models': [skaters_xg_page, goalies_xg_page]
+    }
+)
+pg.run()
