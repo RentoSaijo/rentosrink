@@ -46,15 +46,17 @@ shots <- pbps %>%
   filter(
     typeDescKey %in% c(
     'goal', 
-    'shots-on-goal', 
-    'missed-shot', 
+    'shot-on-goal', 
+    'missed-shot',
     'blocked-shot'
     ),
     !(situationCode %in% c('0101', '1010')),
-    !is.na(distance)
   ) %>% 
   mutate(
     shootingPlayerId = coalesce(shootingPlayerId, scoringPlayerId),
+    distance         = replace_na(distance, mean(distance, na.rm = TRUE)),
+    angle            = replace_na(angle, mean(angle, na.rm = TRUE)),
+    shotType         = replace_na(shotType, 'wrist'),
     isGoal           = typeDescKey == 'goal',
     isPlayoff        = gameTypeId  == 3
   ) %>% 
@@ -76,6 +78,7 @@ shots <- pbps %>%
     goalsAgainst,
     distance,
     angle,
+    shotType,
     isGoal
   )
 
