@@ -1,0 +1,31 @@
+name: Keepalive Ping
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping deployed app
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          set -euo pipefail
+          echo "Pinging: $APP_URL"
+
+          # retry a few times in case of transient cold start / network issues
+          for i in 1 2 3; do
+            code="$(curl -L -s -o /dev/null -w "%{http_code}" "$APP_URL")"
+            echo "Attempt $i → HTTP $code"
+            if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
+              echo "OK"
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "Ping failed"
+          exit 1
