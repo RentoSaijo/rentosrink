@@ -9,9 +9,11 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Streamlit app
+      - name: Ping Streamlit app (health)
         env:
           APP_URL: ${{ secrets.APP_URL }}
         run: |
           set -euo pipefail
-          curl -L --fail --max-time 60 "$APP_URL" > /dev/null
+          HEALTH_URL="${APP_URL%/}/_stcore/health"
+          echo "Pinging: $HEALTH_URL"
+          curl -sS --fail --max-time 60 "$HEALTH_URL" > /dev/null
