@@ -195,7 +195,8 @@ skaters_xG <- list(
     iGFaX_20242025_3,
     iGFaXper82_20242025_3,
     iGFaXper60_20242025_3,
-  )
+  ) %>%
+  mutate(across(where(is.numeric), ~ round(., digits = 2)))
 rm(
   skaters,
   skaters_summary_20242025_2,
@@ -306,7 +307,8 @@ goalies_xG <- list(
     iGSaX_20242025_3,
     iGSaXper82_20242025_3,
     iGSaXper60_20242025_3
-  )
+  ) %>%
+  mutate(across(where(is.numeric), ~ round(., digits = 2)))
 rm(
   goalies,
   goalies_summary_20242025_2,
