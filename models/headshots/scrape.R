@@ -2,17 +2,22 @@
 suppressMessages(library(tidyverse))
 suppressMessages(library(nhlscraper))
 
+# Define constant.
+SEASON <- 20242025
+
 # Get all teams.
-teams_20242025 <- nhlscraper::standings('2025-01-01')$teamAbbrev.default
-positions      <- c('F', 'D', 'G')
+teamTriCodes <- nhlscraper::standings(paste0(
+  SEASON %% 1e4, '-01-01'
+))$teamAbbrev.default
 
 # Get all headshot URLs.
 headshots <- c()
-for (teamTriCode in teams_20242025) {
-  for (positionCode in positions) {
+positionCodes    <- c('F', 'D', 'G')
+for (teamTriCode in teamTriCodes) {
+  for (positionCode in positionCodes) {
     headshots <- append(headshots, nhlscraper::roster(
       team     = teamTriCode, 
-      season   = 20242025, 
+      season   = SEASON, 
       position = positionCode
     )$headshot)
   }
@@ -23,6 +28,5 @@ for (headshot in headshots) {
   playerId <- sub('\\.png$', '', basename(headshot))
   dir.create('assets/headshots', recursive = TRUE, showWarnings = FALSE)
   out_path <- file.path('assets/headshots', paste0(playerId, '.png'))
-  if (file.exists(out_path)) next
   download.file(headshot, destfile = out_path, mode = 'wb', quiet = TRUE)
 }
