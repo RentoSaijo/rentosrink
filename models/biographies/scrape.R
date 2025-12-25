@@ -5,7 +5,7 @@ suppressMessages(library(nhlscraper))
 
 # Define constants.
 START_SEASON <- 20242025
-END_SEASON   <- 20252026
+END_SEASON   <- 20242025
 
 # Get season IDs.
 start_year <- START_SEASON %/% 1e4
@@ -16,7 +16,7 @@ rm(start_year, end_year, years, START_SEASON, END_SEASON)
 
 # Get player IDs.
 playerIds <- c()
-gameTypeIds <- 2:3
+gameTypeIds <- 2 : 3
 for (seasonId in seasonIds) {
   for (gameTypeId in gameTypeIds) {
     playerIds <- append(playerIds, nhlscraper::skater_season_report(
