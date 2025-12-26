@@ -1,19 +1,55 @@
-name: Keepalive Ping
+name: Streamlit Wake
 
 on:
   schedule:
-    - cron: "0 */6 * * *"
+    # every 10 hours (UTC) at minute 17 (avoid top-of-hour delays)
+    - cron: "17 0,10,20 * * *"
   workflow_dispatch: {}
 
 jobs:
-  ping:
+  wake:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Streamlit app (health)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Playwright
+        run: |
+          pip install --disable-pip-version-check playwright
+          playwright install --with-deps chromium
+
+      - name: Visit app + click wake button if present
         env:
           APP_URL: ${{ secrets.APP_URL }}
         run: |
-          set -euo pipefail
-          HEALTH_URL="${APP_URL%/}/_stcore/health"
-          echo "Pinging: $HEALTH_URL"
-          curl -sS --fail --max-time 60 "$HEALTH_URL" > /dev/null
+          python - <<'PY'
+          import os
+          from playwright.sync_api import sync_playwright, TimeoutError
+
+          url = os.environ["APP_URL"].rstrip("/") + "/"
+          print("Opening:", url)
+
+          with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=120_000)
+
+            # If the sleep screen is present, click the wake button.
+            try:
+              btn = page.get_by_role("button", name="Yes, get this app back up!")
+              if btn.count() > 0:
+                print("Sleep gate detected. Clicking wake button...")
+                btn.first.click()
+                # Give it time to start booting
+                page.wait_for_timeout(15_000)
+              else:
+                print("No sleep gate detected.")
+            except TimeoutError:
+              print("Timed out looking for wake button (continuing).")
+
+            # Touch the page again (acts like a real visit)
+            page.goto(url, wait_until="domcontentloaded", timeout=120_000)
+            print("Done.")
+            browser.close()
+          PY
