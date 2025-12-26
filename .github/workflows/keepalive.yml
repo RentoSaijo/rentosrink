@@ -2,7 +2,6 @@ name: Streamlit Wake
 
 on:
   schedule:
-    # every 10 hours (UTC) at minute 17 (avoid top-of-hour delays)
     - cron: "17 0,10,20 * * *"
   workflow_dispatch: {}
 
@@ -48,7 +47,7 @@ jobs:
             except TimeoutError:
               print("Timed out looking for wake button (continuing).")
 
-            # Touch the page again (acts like a real visit)
+            # Touch the page again.
             page.goto(url, wait_until="domcontentloaded", timeout=120_000)
             print("Done.")
             browser.close()
