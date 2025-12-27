@@ -1,6 +1,6 @@
 # Import libraries.
 import streamlit as st
-from utils import load_biographies, load_skater_shot_analysis
+import utils
 
 # Hardcode options and decoders.
 SEASONS    = ['20242025']
@@ -12,7 +12,7 @@ SEASON_LABELS  = {f'{s[:4]}-{s[4:]}': s for s in SEASONS}
 SEASON_OPTIONS = list(SEASON_LABELS.keys())
 
 # Load biographies.
-bio = load_biographies()
+bio = utils.load_biographies()
 
 # Format layout.
 c_player, c_season, c_game, c_cat = st.columns(4, gap = 'small', vertical_alignment = 'top')
@@ -23,7 +23,7 @@ with c_season:
 season = SEASON_LABELS[season_label]  # '20242025'
 
 # Get available players.
-ssa           = load_skater_shot_analysis(season)
+ssa           = utils.load_skater_shot_analysis(season)
 available_ids = set(ssa['playerId'].dropna().astype(int).unique())
 bio_season    = bio[bio['playerId'].isin(available_ids)].sort_values('menuName')
 name_to_id    = dict(zip(bio_season['menuName'], bio_season['playerId']))

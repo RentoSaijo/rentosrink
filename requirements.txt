@@ -1,4 +1,2 @@
 streamlit>=1.36
 pandas>=2.2
-plotly>=5.22
-pillow>=10.4
