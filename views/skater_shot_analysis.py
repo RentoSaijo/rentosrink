@@ -7,8 +7,8 @@ SEASONS    = ['20242025']
 GAME_TYPES = {'Regular Season': 2, 'Stanley Cup Playoffs': 3}
 CATEGORIES = {'Actual': '', 'Per 82': 'per82', 'Per 60': 'per60'}
 
-# Season display (label) -> stored value.
-SEASON_LABELS  = {f'{s[:4]}-{s[4:]}': s for s in SEASONS}  # e.g., '2024-2025' -> '20242025'
+# Create season displays.
+SEASON_LABELS  = {f'{s[:4]}-{s[4:]}': s for s in SEASONS}
 SEASON_OPTIONS = list(SEASON_LABELS.keys())
 
 # Load biographies.
