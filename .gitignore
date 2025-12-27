@@ -4,3 +4,5 @@
 .Ruserdata
 .DS_Store
 models/xG/data/
+__pycache__/
+*.pyc
