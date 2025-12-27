@@ -410,3 +410,4 @@ write_csv(goalie_shot_analysis, paste0(
   SEASON,
   '.csv'
 ))
+rm(SEASON)

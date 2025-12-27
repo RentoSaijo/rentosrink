@@ -1,6 +1,7 @@
 # Load libraries.
 suppressMessages(library(tidyverse))
 suppressMessages(library(tidymodels))
+suppressMessages(library(xgboost))
 suppressMessages(library(nhlscraper))
 
 # Set seed.
@@ -131,7 +132,7 @@ rm(rec, wf, xgb_spec)
 
 # See importance.
 booster <- extract_fit_engine(model)
-imp <- xgb.importance(model = booster)
+imp     <- xgb.importance(model = booster)
 xgb.plot.importance(imp)
 rm(booster, imp)
 
