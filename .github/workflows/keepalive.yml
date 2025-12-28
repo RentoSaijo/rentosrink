@@ -8,7 +8,7 @@ on:
 jobs:
   wake:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 7
 
     steps:
       - name: Setup Python
@@ -16,7 +16,6 @@ jobs:
         with:
           python-version: "3.11"
 
-      # Cache pip to speed up installs and reduce flaky runs.
       - name: Cache pip
         uses: actions/cache@v4
         with:
@@ -31,68 +30,108 @@ jobs:
           pip install --disable-pip-version-check playwright
           playwright install --with-deps chromium
 
-      - name: Visit app + wake + verify app is live
+      - name: Visit app + wake + verify app is live (<=5 min)
         env:
           APP_URL: ${{ secrets.APP_URL }}
         run: |
           python - <<'PY'
-          import os, sys
+          import os, sys, time
           from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
           url = os.environ["APP_URL"].rstrip("/") + "/"
           print("Opening:", url, flush=True)
 
-          APP_SELECTOR = 'div[data-testid="stAppViewContainer"]'
+          LIVE_SELECTORS = [
+              'div[data-testid="stAppViewContainer"]',
+              'header[data-testid="stHeader"]',
+              'div[data-testid="stToolbar"]',
+          ]
+
+          HARD_CAP_SECONDS = 5 * 60  # <= 5 minutes total
+          start = time.monotonic()
+
+          def time_left_ms(default_ms):
+              left = HARD_CAP_SECONDS - (time.monotonic() - start)
+              return max(1000, min(int(left * 1000), default_ms))
 
           with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
+              browser = p.chromium.launch(headless=True)
+              page = browser.new_page()
 
-            def try_wake():
-              # Button text can vary; match by substring.
-              btn = page.get_by_role("button").filter(has_text="get this app back up")
-              if btn.count() > 0:
-                print("Sleep gate detected. Clicking wake button…", flush=True)
-                btn.first.click()
-                return True
-              print("No sleep gate detected on this load.", flush=True)
-              return False
+              def click_wake_if_present():
+                  btn = page.get_by_role("button").filter(has_text="get this app back up")
+                  if btn.count() > 0:
+                      print("Sleep gate detected. Clicking wake button…", flush=True)
+                      btn.first.click()
+                      return True
+                  print("No sleep gate detected on this load.", flush=True)
+                  return False
 
-            page.goto(url, wait_until="domcontentloaded", timeout=120_000)
+              def wait_for_live():
+                  for sel in LIVE_SELECTORS:
+                      try:
+                          page.wait_for_selector(sel, timeout=10_000)
+                          return sel
+                      except PWTimeout:
+                          pass
+                  return None
 
-            # If asleep, wake it; then wait until the actual Streamlit UI exists.
-            for attempt in range(1, 6):
-              try_wake()
+              def save_debug(tag):
+                  try:
+                      page.screenshot(path=f"debug_{tag}.png", full_page=True)
+                      with open(f"debug_{tag}.html", "w", encoding="utf-8") as f:
+                          f.write(page.content())
+                      with open(f"debug_{tag}_url.txt", "w", encoding="utf-8") as f:
+                          f.write(page.url)
+                      print(f"Saved debug_{tag}.*", flush=True)
+                  except Exception as e:
+                      print("Failed saving debug:", e, flush=True)
+
               try:
-                page.wait_for_selector(APP_SELECTOR, timeout=240_000)
-                print("App is live (Streamlit container detected).", flush=True)
-                break
-              except PWTimeout:
-                print(f"Attempt {attempt}: app UI not up yet; reloading…", flush=True)
-                try:
-                  page.reload(wait_until="domcontentloaded", timeout=120_000)
-                except PWTimeout:
-                  # If reload itself times out, try navigating again.
-                  page.goto(url, wait_until="domcontentloaded", timeout=120_000)
-            else:
-              # Capture evidence to logs / artifacts.
-              page.screenshot(path="debug.png", full_page=True)
-              html = page.content()
-              print("FAILED to confirm app is live. Saving debug.png and printing first 4000 chars of HTML.", flush=True)
-              print(html[:4000], flush=True)
-              browser.close()
-              sys.exit(1)
+                  page.goto(url, wait_until="domcontentloaded", timeout=time_left_ms(60_000))
+                  print("Landed on:", page.url, flush=True)
 
-            # Keep session open briefly so it counts as real activity.
-            page.wait_for_timeout(60_000)
-            print("Done.", flush=True)
-            browser.close()
+                  attempt = 0
+                  while True:
+                      if time.monotonic() - start > HARD_CAP_SECONDS:
+                          save_debug("timeout")
+                          raise RuntimeError("Hard cap reached before app became live.")
+
+                      attempt += 1
+                      click_wake_if_present()
+                      page.wait_for_timeout(2_000)
+
+                      live_sel = wait_for_live()
+                      if live_sel:
+                          print(f"App is live (found {live_sel}).", flush=True)
+                          print("Final URL:", page.url, flush=True)
+                          # Keep open briefly to count as activity, but don't burn budget
+                          page.wait_for_timeout(min(15_000, time_left_ms(15_000)))
+                          print("Done.", flush=True)
+                          break
+
+                      print(f"Attempt {attempt}: not live yet; reloading…", flush=True)
+                      try:
+                          page.reload(wait_until="domcontentloaded", timeout=time_left_ms(30_000))
+                      except PWTimeout:
+                          page.goto(url, wait_until="domcontentloaded", timeout=time_left_ms(30_000))
+
+              except Exception as e:
+                  # Always try to capture what we saw
+                  save_debug("error")
+                  print("ERROR:", repr(e), flush=True)
+                  raise
+              finally:
+                  browser.close()
           PY
 
-      # Upload screenshot if the run failed, to diagnose why it didn't wake.
-      - name: Upload debug artifact (on failure)
-        if: failure()
+      - name: Upload debug artifacts (if present)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: streamlit-wake-debug
-          path: debug.png
+          path: |
+            debug_*.png
+            debug_*.html
+            debug_*_url.txt
+          if-no-files-found: ignore
