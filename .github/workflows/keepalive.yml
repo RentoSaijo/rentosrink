@@ -2,7 +2,7 @@ name: Streamlit Wake
 
 on:
   schedule:
-    - cron: "17 */2 * * *"  # every 2 hours (UTC)
+    - cron: "17 */2 * * *" # every 2 hours (UTC)
   workflow_dispatch: {}
 
 jobs:
@@ -18,52 +18,49 @@ jobs:
           set -euo pipefail
 
           BASE_URL="${APP_URL%/}"
-          HEALTH_URL="$BASE_URL/_stcore/health"
+          STATUS_URL="$BASE_URL/app/status"
 
           echo "Base:   $BASE_URL"
-          echo "Health: $HEALTH_URL"
+          echo "Status: $STATUS_URL"
 
           UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari"
 
-          # Try for ~5 minutes total: 30 attempts * (max 8s curl + 2s sleep) ~= 5 min
           ok="0"
+
+          # ~5 minutes total: 30 attempts * (max 6s curl + 4s sleep) ~= 5 min
           for i in $(seq 1 30); do
             ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            # cache-bust query param + no-cache headers
-            code="$(curl -sS -L \
+
+            # -q: ignore ~/.curlrc
+            # --ipv4: avoid occasional IPv6 stalls
+            # no -L: don't follow redirects (we want the true status code)
+            code="$(curl -q -sS \
+              --ipv4 \
+              --connect-timeout 3 \
+              --max-time 6 \
               -A "$UA" \
               -H "Cache-Control: no-cache" -H "Pragma: no-cache" \
-              --max-time 8 \
               -o /dev/null -w "%{http_code}" \
-              "${HEALTH_URL}?ping=${i}&t=$(date +%s)" || true)"
+              "${STATUS_URL}?t=$(date +%s)&i=$i" || echo "000")"
 
-            echo "$ts attempt=$i health_http=$code"
+            echo "$ts attempt=$i status_http=$code"
 
             if [ "$code" = "200" ]; then
               ok="1"
               break
             fi
 
-            sleep 2
+            sleep 4
           done
 
-          # Always touch the root URL once too (counts as a normal visit).
-          curl -sS -L -A "$UA" --max-time 10 -o /dev/null "$BASE_URL/" || true
+          # Always touch the root once as well (counts as regular traffic)
+          curl -q -sS --ipv4 --connect-timeout 3 --max-time 10 -A "$UA" -o /dev/null "$BASE_URL/?t=$(date +%s)" || true
 
           if [ "$ok" != "1" ]; then
-            echo "Failed to observe health=200 within ~5 minutes."
-            echo "Last few headers from health endpoint:"
-            curl -sS -I -L -A "$UA" --max-time 10 "$HEALTH_URL" || true
+            echo "Did not observe /app/status = 200 within ~5 minutes."
+            echo "One-shot header dump for debugging:"
+            curl -q -sS --ipv4 --connect-timeout 3 --max-time 10 -A "$UA" -I "$STATUS_URL" || true
             exit 1
           fi
 
-          echo "Backend is healthy (200). Done."
-
-      - name: Upload log on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: streamlit-wake-debug
-          path: |
-            $GITHUB_STEP_SUMMARY
-          if-no-files-found: ignore
+          echo "App status endpoint returned 200. Done."
