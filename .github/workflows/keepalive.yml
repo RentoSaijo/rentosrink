@@ -1,66 +1,52 @@
-name: Streamlit Wake
+name: Streamlit Keepalive
 
 on:
   schedule:
-    - cron: "17 */2 * * *" # every 2 hours (UTC)
+    - cron: "17 */1 * * *"  # every hour (UTC) at :17
   workflow_dispatch: {}
 
 jobs:
-  wake:
+  keepalive:
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 5
 
     steps:
-      - name: Wake Streamlit (<= 5 minutes)
+      - name: Ping Streamlit app
         env:
           APP_URL: ${{ secrets.APP_URL }}
         run: |
           set -euo pipefail
 
-          BASE_URL="${APP_URL%/}"
-          STATUS_URL="$BASE_URL/app/status"
-
-          echo "Base:   $BASE_URL"
-          echo "Status: $STATUS_URL"
-
+          BASE_URL="${APP_URL%/}/"
           UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari"
 
+          echo "Pinging: $BASE_URL"
+
           ok="0"
-
-          # ~5 minutes total: 30 attempts * (max 6s curl + 4s sleep) ~= 5 min
-          for i in $(seq 1 30); do
+          for i in 1 2 3; do
             ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-            # -q: ignore ~/.curlrc
-            # --ipv4: avoid occasional IPv6 stalls
-            # no -L: don't follow redirects (we want the true status code)
             code="$(curl -q -sS \
               --ipv4 \
-              --connect-timeout 3 \
-              --max-time 6 \
+              --connect-timeout 5 \
+              --max-time 20 \
               -A "$UA" \
               -H "Cache-Control: no-cache" -H "Pragma: no-cache" \
               -o /dev/null -w "%{http_code}" \
-              "${STATUS_URL}?t=$(date +%s)&i=$i" || echo "000")"
+              "${BASE_URL}?keepalive=${i}&t=$(date +%s)" || echo "000")"
+            echo "$ts attempt=$i http=$code"
 
-            echo "$ts attempt=$i status_http=$code"
-
-            if [ "$code" = "200" ]; then
+            # Count 2xx or 3xx as "traffic succeeded"
+            if [ "${code#2}" != "$code" ] || [ "${code#3}" != "$code" ]; then
               ok="1"
               break
             fi
 
-            sleep 4
+            sleep 5
           done
 
-          # Always touch the root once as well (counts as regular traffic)
-          curl -q -sS --ipv4 --connect-timeout 3 --max-time 10 -A "$UA" -o /dev/null "$BASE_URL/?t=$(date +%s)" || true
-
           if [ "$ok" != "1" ]; then
-            echo "Did not observe /app/status = 200 within ~5 minutes."
-            echo "One-shot header dump for debugging:"
-            curl -q -sS --ipv4 --connect-timeout 3 --max-time 10 -A "$UA" -I "$STATUS_URL" || true
+            echo "No successful response (2xx/3xx) received."
             exit 1
           fi
 
-          echo "App status endpoint returned 200. Done."
+          echo "OK: traffic recorded."
