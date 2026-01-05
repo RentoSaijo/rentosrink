@@ -5,7 +5,57 @@ suppressMessages(library(stringr))
 suppressMessages(library(nhlscraper))
 
 # Define constant.
-SEASON <- 20242025
+SEASON <- 20252026
+
+# Define helpers to safeguard against non-existent playoffs.
+safe_skater_summary <- function(season, game_type) {
+  out <- tryCatch(
+    nhlscraper::skater_season_report(
+      season    = season,
+      game_type = game_type,
+      category  = 'summary'
+    ),
+    error = function(e) tibble()
+  )
+  if (nrow(out) == 0) {
+    return(tibble(
+      playerId = integer(),
+      !!paste0('gamesPlayed_', game_type) := integer(),
+      !!paste0('minsPlayed_',  game_type) := double()
+    ))
+  }
+  out %>%
+    mutate(minsPlayed = timeOnIcePerGame * gamesPlayed / 60) %>%
+    select(
+      playerId,
+      !!paste0('gamesPlayed_', game_type) := gamesPlayed,
+      !!paste0('minsPlayed_',  game_type) := minsPlayed
+    )
+}
+safe_goalie_summary <- function(season, game_type) {
+  out <- tryCatch(
+    nhlscraper::goalie_season_report(
+      season    = season,
+      game_type = game_type,
+      category  = 'summary'
+    ),
+    error = function(e) tibble()
+  )
+  if (nrow(out) == 0) {
+    return(tibble(
+      playerId = integer(),
+      !!paste0('gamesPlayed_', game_type) := integer(),
+      !!paste0('minsPlayed_',  game_type) := double()
+    ))
+  }
+  out %>%
+    mutate(minsPlayed = timeOnIce / 60) %>%
+    select(
+      playerId,
+      !!paste0('gamesPlayed_', game_type) := gamesPlayed,
+      !!paste0('minsPlayed_',  game_type) := minsPlayed
+    )
+}
 
 # Load data.
 pbps <- nhlscraper::gc_pbps(SEASON)
@@ -26,7 +76,7 @@ pbps <- pbps %>%
 # Create testing set.
 shots <- pbps %>% 
   filter(
-    # Keep only regular season and playoffs.
+    # Keep only regular season and playoffs (if playoffs exist, they’ll be included).
     gameTypeId %in% 2:3,
     # Keep only shots.
     typeDescKey %in% c(
@@ -37,14 +87,10 @@ shots <- pbps %>%
     )
   ) %>% 
   mutate(
-    # Combine shootingPlayerId and scoringPlayerId.
     shootingPlayerId = coalesce(shootingPlayerId, scoringPlayerId),
-    # Make every shot have shotType.
     shotType         = replace_na(shotType, 'wrist'),
     shotType         = factor(shotType),
-    # Flag playoff shot.
     isPlayoff        = gameTypeId == 3,
-    # Flag goals.
     isGoal           = typeDescKey == 'goal',
     isGoal           = factor(
       isGoal, 
@@ -103,46 +149,16 @@ skater_shots <- shots %>%
   ) %>% 
   group_by(playerId) %>%
   summarise(
-    iCorsiF_2 = sum(
-      if_else(!isPlayoff, 1L, 0L),
-      na.rm = TRUE
-    ),
-    iCorsiF_3 = sum(
-      if_else(isPlayoff, 1L, 0L),
-      na.rm = TRUE
-    ),
-    iFenwickF_2 = sum(
-      if_else(isFenwick & !isPlayoff, 1L, 0L),
-      na.rm = TRUE
-    ),
-    iFenwickF_3 = sum(
-      if_else(isFenwick & isPlayoff, 1L, 0L),
-      na.rm = TRUE
-    ),
-    iSOGF_2 = sum(
-      if_else(isSOG & !isPlayoff, 1L, 0L),
-      na.rm = TRUE
-    ),
-    iSOGF_3 = sum(
-      if_else(isSOG & isPlayoff, 1L, 0L),
-      na.rm = TRUE
-    ),
-    iGF_2 = sum(
-      if_else(isGoal == 'yes' & !isPlayoff, 1L, 0L), 
-      na.rm = TRUE
-    ),
-    iGF_3 = sum(
-      if_else(isGoal == 'yes' & isPlayoff, 1L, 0L), 
-      na.rm = TRUE
-    ),
-    ixGF_2 = sum(
-      if_else(!isPlayoff, xG, 0), 
-      na.rm = TRUE
-    ),
-    ixGF_3 = sum(
-      if_else(isPlayoff, xG, 0), 
-      na.rm = TRUE
-    ),
+    iCorsiF_2 = sum(if_else(!isPlayoff, 1L, 0L), na.rm = TRUE),
+    iCorsiF_3 = sum(if_else(isPlayoff,  1L, 0L), na.rm = TRUE),
+    iFenwickF_2 = sum(if_else(isFenwick & !isPlayoff, 1L, 0L), na.rm = TRUE),
+    iFenwickF_3 = sum(if_else(isFenwick &  isPlayoff, 1L, 0L), na.rm = TRUE),
+    iSOGF_2 = sum(if_else(isSOG & !isPlayoff, 1L, 0L), na.rm = TRUE),
+    iSOGF_3 = sum(if_else(isSOG &  isPlayoff, 1L, 0L), na.rm = TRUE),
+    iGF_2 = sum(if_else(isGoal == 'yes' & !isPlayoff, 1L, 0L), na.rm = TRUE),
+    iGF_3 = sum(if_else(isGoal == 'yes' &  isPlayoff, 1L, 0L), na.rm = TRUE),
+    ixGF_2 = sum(if_else(!isPlayoff, xG, 0), na.rm = TRUE),
+    ixGF_3 = sum(if_else( isPlayoff, xG, 0), na.rm = TRUE),
     iGFaX_2 = iGF_2 - ixGF_2,
     iGFaX_3 = iGF_3 - ixGF_3,
     .groups = 'drop'
@@ -158,92 +174,25 @@ goalie_shots <- shots %>%
   ) %>% 
   group_by(playerId) %>%
   summarise(
-    iFenwickA_2 = sum(
-      if_else(isFenwick & !isPlayoff, 1L, 0L),
-      na.rm = TRUE
-    ),
-    iFenwickA_3 = sum(
-      if_else(isFenwick & isPlayoff, 1L, 0L),
-      na.rm = TRUE
-    ),
-    iSOGA_2 = sum(
-      if_else(isSOG & !isPlayoff, 1L, 0L),
-      na.rm = TRUE
-    ),
-    iSOGA_3 = sum(
-      if_else(isSOG & isPlayoff, 1L, 0L),
-      na.rm = TRUE
-    ),
-    iGA_2 = sum(
-      if_else(isGoal == 'yes' & !isPlayoff, 1L, 0L), 
-      na.rm = TRUE
-    ),
-    iGA_3 = sum(
-      if_else(isGoal == 'yes' & isPlayoff, 1L, 0L), 
-      na.rm = TRUE
-    ),
-    ixGA_2 = sum(
-      if_else(!isPlayoff, xG, 0), 
-      na.rm = TRUE
-    ),
-    ixGA_3 = sum(
-      if_else(isPlayoff, xG, 0), 
-      na.rm = TRUE
-    ),
+    iFenwickA_2 = sum(if_else(isFenwick & !isPlayoff, 1L, 0L), na.rm = TRUE),
+    iFenwickA_3 = sum(if_else(isFenwick &  isPlayoff, 1L, 0L), na.rm = TRUE),
+    iSOGA_2 = sum(if_else(isSOG & !isPlayoff, 1L, 0L), na.rm = TRUE),
+    iSOGA_3 = sum(if_else(isSOG &  isPlayoff, 1L, 0L), na.rm = TRUE),
+    iGA_2 = sum(if_else(isGoal == 'yes' & !isPlayoff, 1L, 0L), na.rm = TRUE),
+    iGA_3 = sum(if_else(isGoal == 'yes' &  isPlayoff, 1L, 0L), na.rm = TRUE),
+    ixGA_2 = sum(if_else(!isPlayoff, xG, 0), na.rm = TRUE),
+    ixGA_3 = sum(if_else( isPlayoff, xG, 0), na.rm = TRUE),
     iGSaX_2 = ixGA_2 - iGA_2,
     iGSaX_3 = ixGA_3 - iGA_3,
     .groups = 'drop'
   )
 
-# Scrape supplemental data.
-skater_season_summary_2 <- nhlscraper::skater_season_report(
-  season    = SEASON,
-  game_type = 2,
-  category  = 'summary'
-) %>% 
-  mutate(
-    minsPlayed = timeOnIcePerGame * gamesPlayed / 60
-  ) %>% 
-  select(
-    playerId,
-    gamesPlayed_2 = gamesPlayed,
-    minsPlayed_2 = minsPlayed
-  )
-skater_season_summary_3 <- nhlscraper::skater_season_report(
-  season    = SEASON,
-  game_type = 3,
-  category  = 'summary'
-) %>% 
-  mutate(
-    minsPlayed = timeOnIcePerGame * gamesPlayed / 60
-  ) %>% 
-  select(
-    playerId,
-    gamesPlayed_3 = gamesPlayed,
-    minsPlayed_3 = minsPlayed
-  )
-goalie_season_summary_2 <- nhlscraper::goalie_season_report(
-  season    = SEASON,
-  game_type = 2,
-  category  = 'summary'
-) %>% 
-  mutate(minsPlayed = timeOnIce / 60) %>% 
-  select(
-    playerId,
-    gamesPlayed_2 = gamesPlayed,
-    minsPlayed_2 = minsPlayed,
-  )
-goalie_season_summary_3 <- nhlscraper::goalie_season_report(
-  season    = SEASON,
-  game_type = 3,
-  category  = 'summary'
-) %>% 
-  mutate(minsPlayed = timeOnIce / 60) %>% 
-  select(
-    playerId,
-    gamesPlayed_3 = gamesPlayed,
-    minsPlayed_3 = minsPlayed,
-  )
+# Scrape supplemental data (safe even if playoffs aren't available).
+skater_season_summary_2 <- safe_skater_summary(SEASON, 2)
+skater_season_summary_3 <- safe_skater_summary(SEASON, 3)
+goalie_season_summary_2 <- safe_goalie_summary(SEASON, 2)
+goalie_season_summary_3 <- safe_goalie_summary(SEASON, 3)
+
 season <- nhlscraper::seasons() %>% 
   filter(id == SEASON)
 

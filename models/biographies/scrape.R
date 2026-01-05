@@ -5,7 +5,7 @@ suppressMessages(library(nhlscraper))
 
 # Define constants.
 START_SEASON <- 20242025
-END_SEASON   <- 20242025
+END_SEASON   <- 20252026
 
 # Get season IDs.
 start_year <- START_SEASON %/% 1e4

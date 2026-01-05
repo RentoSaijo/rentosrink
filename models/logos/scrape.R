@@ -5,7 +5,7 @@ suppressMessages(library(magick))
 suppressMessages(library(nhlscraper))
 
 # Define constant.
-SEASON <- 20242025
+SEASON <- 20252026
 
 # Get all logo URLs.
 teamIds    <- nhlscraper::teams()$id
