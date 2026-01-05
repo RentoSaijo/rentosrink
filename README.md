@@ -8,10 +8,12 @@
 
 ### Features/Updates
 * [ ] Shot Analysis
-  * [ ] 2025-26 Stats
-  * [ ] Shot Speed
+  * [X] 2025-26 Stats
+  * [X] Sankey Plot Fix
+  * [X] Bar Plot Fix
+  * [ ] On-ice Stats
   * [ ] Shot Location
-  * [ ] Player Bio
+  * [X] Player Bio
   * [ ] Goalie Version
 * [ ] Salary Projection
 * [ ] Biweekly Articles
