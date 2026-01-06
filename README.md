@@ -11,9 +11,10 @@
   * [X] 2025-26 Stats
   * [X] Sankey Plot Fix
   * [X] Bar Plot Fix
+  * [X] Shot Geometry
+  * [ ] Shifts Data
   * [ ] On-ice Stats
-  * [ ] Shot Location
-  * [X] Player Bio
+  * [X] Headshot
   * [ ] Goalie Version
 * [ ] Salary Projection
 * [ ] Biweekly Articles

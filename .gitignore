@@ -6,3 +6,5 @@
 models/xG/data/
 __pycache__/
 *.pyc
+.idea
+.devcontainer

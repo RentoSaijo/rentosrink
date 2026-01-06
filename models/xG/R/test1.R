@@ -5,7 +5,7 @@ suppressMessages(library(stringr))
 suppressMessages(library(nhlscraper))
 
 # Define constant.
-SEASON <- 20252026
+SEASON <- 20242025
 
 # Define helpers to safeguard against non-existent playoffs.
 safe_skater_summary <- function(season, game_type) {
@@ -141,6 +141,7 @@ shots       <- bind_rows(shots_score, shots_block) %>%
 rm(model, shots_score, shots_block, probs)
 
 # Calculate skater shot metrics.
+# Calculate skater shot metrics.
 skater_shots <- shots %>%
   mutate(
     playerId  = shootingPlayerId,
@@ -161,9 +162,30 @@ skater_shots <- shots %>%
     ixGF_3 = sum(if_else( isPlayoff, xG, 0), na.rm = TRUE),
     iGFaX_2 = iGF_2 - ixGF_2,
     iGFaX_3 = iGF_3 - ixGF_3,
+    d_2 = if_else(
+      sum(!isPlayoff & !is.na(distance)) > 0,
+      mean(distance[!isPlayoff], na.rm = TRUE),
+      NA_real_
+    ),
+    d_3 = if_else(
+      sum(isPlayoff & !is.na(distance)) > 0,
+      mean(distance[isPlayoff], na.rm = TRUE),
+      NA_real_
+    ),
+    a_2 = if_else(
+      sum(!isPlayoff & !is.na(angle)) > 0,
+      mean(angle[!isPlayoff], na.rm = TRUE),
+      NA_real_
+    ),
+    a_3 = if_else(
+      sum(isPlayoff & !is.na(angle)) > 0,
+      mean(angle[isPlayoff], na.rm = TRUE),
+      NA_real_
+    ),
     .groups = 'drop'
   )
 
+# Calculate goalie shot metrics.
 # Calculate goalie shot metrics.
 goalie_shots <- shots %>%
   filter(!is.na(goalieInNetId)) %>% 
@@ -184,6 +206,26 @@ goalie_shots <- shots %>%
     ixGA_3 = sum(if_else( isPlayoff, xG, 0), na.rm = TRUE),
     iGSaX_2 = ixGA_2 - iGA_2,
     iGSaX_3 = ixGA_3 - iGA_3,
+    d_2 = if_else(
+      sum(!isPlayoff & !is.na(distance)) > 0,
+      mean(distance[!isPlayoff], na.rm = TRUE),
+      NA_real_
+    ),
+    d_3 = if_else(
+      sum(isPlayoff & !is.na(distance)) > 0,
+      mean(distance[isPlayoff], na.rm = TRUE),
+      NA_real_
+    ),
+    a_2 = if_else(
+      sum(!isPlayoff & !is.na(angle)) > 0,
+      mean(angle[!isPlayoff], na.rm = TRUE),
+      NA_real_
+    ),
+    a_3 = if_else(
+      sum(isPlayoff & !is.na(angle)) > 0,
+      mean(angle[isPlayoff], na.rm = TRUE),
+      NA_real_
+    ),
     .groups = 'drop'
   )
 
@@ -192,6 +234,7 @@ skater_season_summary_2 <- safe_skater_summary(SEASON, 2)
 skater_season_summary_3 <- safe_skater_summary(SEASON, 3)
 goalie_season_summary_2 <- safe_goalie_summary(SEASON, 2)
 goalie_season_summary_3 <- safe_goalie_summary(SEASON, 3)
+rm(safe_skater_summary, safe_goalie_summary)
 
 season <- nhlscraper::seasons() %>% 
   filter(id == SEASON)
@@ -247,7 +290,7 @@ skater_shot_analysis <- skater_shot_analysis %>%
       \(x) if_else(minsPlayed_3 > 0, x / minsPlayed_3 * 60, NA_real_),
       .names = '{.col}_per60'
     ),
-    across(everything(), ~replace_na(.x, 0))
+    across(!matches('^(d|a)_[23]$'), ~replace_na(.x, 0))
   )
 rm(metric_cols_2, metric_cols_3)
 
@@ -276,7 +319,7 @@ goalie_shot_analysis <- goalie_shot_analysis %>%
       \(x) if_else(minsPlayed_3 > 0, x / minsPlayed_3 * 60, NA_real_),
       .names = '{.col}_per60'
     ),
-    across(everything(), ~replace_na(.x, 0))
+    across(!matches('^(d|a)_[23]$'), ~replace_na(.x, 0))
   )
 rm(metric_cols_2, metric_cols_3)
 

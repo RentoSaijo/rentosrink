@@ -77,8 +77,8 @@ def _fmt(v, is_rate):
         return None
     return f'{float(v):.2f}' if is_rate else f'{int(round(float(v)))}'
 
-# ----- TOP ROW: HEADSHOT + BIO + SUMMARY ----- #
-c_hs, c_bio, c_summary = st.columns([1, 1.25, 3.75], gap = 'medium', vertical_alignment = 'center')
+# ----- TOP ROW: HEADSHOT + SUMMARY ----- #
+c_hs, c_summary = st.columns([1, 5], gap = 'medium', vertical_alignment = 'center')
 
 # Define helpers.
 def _fmt_height(inches):
@@ -103,74 +103,47 @@ with c_hs:
         headshot_path = f'assets/headshots/{int(player_id)}.png'
         _img(headshot_path, fallback='assets/headshots/default.png')
 
-# --- BIO --- #
-with c_bio:
-    if player_id is None:
-        st.info('Select a player.')
-    else:
-        b = bio.loc[bio['playerId'] == player_id].iloc[0]
-
-        full_name = (b.get('fullName', player_name) or '').strip()
-        parts     = full_name.split()
-        last_name = parts[-1] if parts else full_name
-
-        pos   = (b.get('position') or '').strip() or None
-        num   = _safe_int(b.get('number'))
-        hand  = (b.get('hand') or '').strip() or None
-        nat   = (b.get('nationality') or '').strip() or None
-        birth = (b.get('birthDate') or '').strip() or None
-        wt    = _safe_int(b.get('weight'))
-
-        # Title: last name only.
-        st.markdown(f"### {last_name}")
-
-        # Line 1: LW・Shoots L・#10
-        c1 = "・".join([x for x in [
-            pos,
-            f"Shoots {hand}" if hand else None,
-            f"#{num}" if num is not None else None,
-        ] if x])
-
-        # Line 2: CAN・1996-12-14
-        c2 = "・".join([x for x in [
-            nat,
-            birth if birth else None,
-        ] if x])
-
-        # Line 3: 75 in・209 lb
-        c3 = "・".join([x for x in [
-            f"{int(b.get('height'))} in" if not pd.isna(b.get('height')) else None,
-            f"{wt} lb" if wt is not None else None,
-        ] if x])
-
-        if c1:
-            st.caption(c1)
-        if c2:
-            st.caption(c2)
-        if c3:
-            st.caption(c3)
-
 # --- SUMMARY (METRICS) --- #
 with c_summary:
+    c1, c2, c3, c4 = st.columns(4, gap='medium')
+
     if r is None:
-        st.metric('iGF', value='N/A')
-        st.metric('ixGF', value='N/A')
+        with c1: st.metric('Avg. Dist.', value='N/A')
+        with c2: st.metric('Avg. Angle', value='N/A')
+        with c3: st.metric('iGF', value='N/A')
+        with c4: st.metric('ixGF', value='N/A')
     else:
+        # Distance/angle columns are keyed only by game type (2/3).
+        d_col = f'd_{game_type}'
+        a_col = f'a_{game_type}'
+
+        d = r.get(d_col, float('nan'))
+        a = r.get(a_col, float('nan'))
+
+        # Goals columns use category suffix.
         goal_col = f'iGF_{game_type}{category_suffix}'
         ixg_col  = f'ixGF_{game_type}{category_suffix}'
 
         goals = r.get(goal_col, float('nan'))
         ixg   = r.get(ixg_col, float('nan'))
 
-        # Always show integers.
+        d_str = 'N/A' if pd.isna(d) else f"{float(d):.1f}'"
+        a_str = 'N/A' if pd.isna(a) else f'{float(a):.1f}°'
+
         goals_val = None if pd.isna(goals) else int(round(float(goals)))
         ixg_val   = None if pd.isna(ixg)   else int(round(float(ixg)))
 
         goals_str = 'N/A' if goals_val is None else f'{goals_val}'
         ixg_str   = 'N/A' if ixg_val is None else f'{ixg_val}'
 
-        st.metric('iGF', value = goals_str)
-        st.metric('ixGF', value = ixg_str)
+        with c1:
+            st.metric('Avg. Dist.', value=d_str)
+        with c2:
+            st.metric('Avg. Angle', value=a_str)
+        with c3:
+            st.metric('iGF', value=goals_str)
+        with c4:
+            st.metric('ixGF', value=ixg_str)
 
 # ----- PLOTS LAYOUT ----- #
 c_sanky, c_bar = st.columns(2, gap = 'large', vertical_alignment = 'top')
