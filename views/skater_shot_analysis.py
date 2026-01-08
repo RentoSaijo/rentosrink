@@ -16,10 +16,10 @@ SEASON_OPTIONS = list(SEASON_LABELS.keys())
 # Load biographies.
 bio = load_biographies()
 
-# Format layout.
+# Format selection menu.
 c_player, c_season, c_game, c_cat = st.columns(4, gap = 'small', vertical_alignment = 'top')
 
-# Create selection box for season (display label, store raw).
+# Create selection box for season.
 with c_season:
     season_label = st.selectbox('Season', SEASON_OPTIONS, index = 0, key = 'season_label')
 season = SEASON_LABELS[season_label]
@@ -65,22 +65,21 @@ with c_cat:
 category_label  = category_label or 'Actual'
 category_suffix = CATEGORIES[category_label]
 
-# Pull selected row once (used for metric + plots).
+# Pull selected row.
 r = None
 if player_id is not None:
     m = (ssa['playerId'] == player_id)
     if m.any():
         r = ssa.loc[m].iloc[0]
 
+# Format headshot + summary row.
+c_hs, c_summary = st.columns([0.5, 5.5], gap = 'medium', vertical_alignment = 'center')
+
+# Define helpers.
 def _fmt(v, is_rate):
     if v is None or pd.isna(v):
         return None
     return f'{float(v):.2f}' if is_rate else f'{int(round(float(v)))}'
-
-# ----- TOP ROW: HEADSHOT + SUMMARY ----- #
-c_hs, c_summary = st.columns([1, 5], gap = 'medium', vertical_alignment = 'center')
-
-# Define helpers.
 def _fmt_height(inches):
     if inches is None or pd.isna(inches):
         return None
@@ -103,49 +102,41 @@ with c_hs:
         headshot_path = f'assets/headshots/{int(player_id)}.png'
         _img(headshot_path, fallback='assets/headshots/default.png')
 
-# --- SUMMARY (METRICS) --- #
+# --- SUMMARY --- #
 with c_summary:
-    c1, c2, c3, c4 = st.columns(4, gap='medium')
-
+    c1, c2, c3, c4 = st.columns(4, gap = 'small')
     if r is None:
-        with c1: st.metric('Avg. Dist.', value='N/A')
-        with c2: st.metric('Avg. Angle', value='N/A')
-        with c3: st.metric('iGF', value='N/A')
-        with c4: st.metric('ixGF', value='N/A')
+        with c1: st.metric('Avg. Dist.', value = 'N/A')
+        with c2: st.metric('Avg. Angle', value = 'N/A')
+        with c3: st.metric('iGF', value = 'N/A')
+        with c4: st.metric('ixGF', value = 'N/A')
     else:
         # Distance/angle columns are keyed only by game type (2/3).
         d_col = f'd_{game_type}'
         a_col = f'a_{game_type}'
-
         d = r.get(d_col, float('nan'))
         a = r.get(a_col, float('nan'))
-
         # Goals columns use category suffix.
         goal_col = f'iGF_{game_type}{category_suffix}'
         ixg_col  = f'ixGF_{game_type}{category_suffix}'
-
         goals = r.get(goal_col, float('nan'))
         ixg   = r.get(ixg_col, float('nan'))
-
         d_str = 'N/A' if pd.isna(d) else f"{float(d):.1f}'"
         a_str = 'N/A' if pd.isna(a) else f'{float(a):.1f}°'
-
         goals_val = None if pd.isna(goals) else int(round(float(goals)))
         ixg_val   = None if pd.isna(ixg)   else int(round(float(ixg)))
-
         goals_str = 'N/A' if goals_val is None else f'{goals_val}'
         ixg_str   = 'N/A' if ixg_val is None else f'{ixg_val}'
-
         with c1:
-            st.metric('Avg. Dist.', value=d_str)
+            st.metric('Avg. Dist.', value = d_str)
         with c2:
-            st.metric('Avg. Angle', value=a_str)
+            st.metric('Avg. Angle', value = a_str)
         with c3:
-            st.metric('iGF', value=goals_str)
+            st.metric('iGF', value = goals_str)
         with c4:
-            st.metric('ixGF', value=ixg_str)
+            st.metric('ixGF', value = ixg_str)
 
-# ----- PLOTS LAYOUT ----- #
+# Format plots.
 c_sanky, c_bar = st.columns(2, gap = 'large', vertical_alignment = 'top')
 
 # ----- SANKEY DIAGRAM ----- #

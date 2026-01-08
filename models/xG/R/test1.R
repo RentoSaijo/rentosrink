@@ -5,7 +5,7 @@ suppressMessages(library(stringr))
 suppressMessages(library(nhlscraper))
 
 # Define constant.
-SEASON <- 20242025
+SEASON <- 20252026
 
 # Define helpers to safeguard against non-existent playoffs.
 safe_skater_summary <- function(season, game_type) {
@@ -84,7 +84,9 @@ shots <- pbps %>%
       'shot-on-goal', 
       'missed-shot',
       'blocked-shot'
-    )
+    ),
+    # Remove shootouts.
+    !(gameTypeId == 2 & period == 5 & secondsElapsedInPeriod == 0)
   ) %>% 
   mutate(
     shootingPlayerId = coalesce(shootingPlayerId, scoringPlayerId),
