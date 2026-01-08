@@ -80,6 +80,7 @@ shots <- pbps %>%
     goalieInNetId,
     typeDescKey,
     # Predictors
+    isHome,
     isPlayoff,
     period,
     secondsElapsedInPeriod,
