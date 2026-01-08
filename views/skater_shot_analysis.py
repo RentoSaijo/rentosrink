@@ -73,7 +73,7 @@ if player_id is not None:
         r = ssa.loc[m].iloc[0]
 
 # Format headshot + summary row.
-c_hs, c_summary = st.columns([0.5, 5.5], gap = 'medium', vertical_alignment = 'center')
+c_hs, c_summary = st.columns([0.75, 5.25], gap = 'medium', vertical_alignment = 'center')
 
 # Define helpers.
 def _fmt(v, is_rate):
@@ -99,42 +99,58 @@ with c_hs:
     if player_id is None:
         st.empty()
     else:
-        headshot_path = f'assets/headshots/{int(player_id)}.png'
-        _img(headshot_path, fallback='assets/headshots/default.png')
+        with st.container(border=True):
+            headshot_path = f'assets/headshots/{int(player_id)}.png'
+            st.image(headshot_path, width='stretch')
 
 # --- SUMMARY --- #
 with c_summary:
-    c1, c2, c3, c4 = st.columns(4, gap = 'small')
+    c1, c2, c3, c4, c5, c6 = st.columns(6, gap = 'small')
+
     if r is None:
-        with c1: st.metric('Avg. Dist.', value = 'N/A')
-        with c2: st.metric('Avg. Angle', value = 'N/A')
-        with c3: st.metric('iGF', value = 'N/A')
-        with c4: st.metric('ixGF', value = 'N/A')
+        with c1: st.metric('Avg. Shot Distance', value = 'N/A')
+        with c2: st.metric('Avg. Shot Angle', value = 'N/A')
+        with c3: st.metric('Ind. Goals For', value = 'N/A')
+        with c4: st.metric('Ind. Exp. Goals For', value = 'N/A')
+        with c5: st.metric('On-ice Goals For', value = 'N/A')
+        with c6: st.metric('On-ice Exp. Goals For', value = 'N/A')
     else:
         # Distance/angle columns are keyed only by game type (2/3).
         d_col = f'd_{game_type}'
         a_col = f'a_{game_type}'
         d = r.get(d_col, float('nan'))
         a = r.get(a_col, float('nan'))
+
         # Goals columns use category suffix.
-        goal_col = f'iGF_{game_type}{category_suffix}'
-        ixg_col  = f'ixGF_{game_type}{category_suffix}'
-        goals = r.get(goal_col, float('nan'))
-        ixg   = r.get(ixg_col, float('nan'))
+        igf_col  = f'iGF_{game_type}{category_suffix}'
+        ixgf_col = f'ixGF_{game_type}{category_suffix}'
+        ogf_col  = f'oGF_{game_type}{category_suffix}'
+        oxgf_col = f'oxGF_{game_type}{category_suffix}'
+
+        igf  = r.get(igf_col,  float('nan'))
+        ixgf = r.get(ixgf_col, float('nan'))
+        ogf  = r.get(ogf_col,  float('nan'))
+        oxgf = r.get(oxgf_col, float('nan'))
+
         d_str = 'N/A' if pd.isna(d) else f"{float(d):.1f}'"
         a_str = 'N/A' if pd.isna(a) else f'{float(a):.1f}°'
-        goals_val = None if pd.isna(goals) else int(round(float(goals)))
-        ixg_val   = None if pd.isna(ixg)   else int(round(float(ixg)))
-        goals_str = 'N/A' if goals_val is None else f'{goals_val}'
-        ixg_str   = 'N/A' if ixg_val is None else f'{ixg_val}'
-        with c1:
-            st.metric('Avg. Dist.', value = d_str)
-        with c2:
-            st.metric('Avg. Angle', value = a_str)
-        with c3:
-            st.metric('iGF', value = goals_str)
-        with c4:
-            st.metric('ixGF', value = ixg_str)
+
+        igf_val  = None if pd.isna(igf)  else int(round(float(igf)))
+        ixgf_val = None if pd.isna(ixgf) else int(round(float(ixgf)))
+        ogf_val  = None if pd.isna(ogf)  else int(round(float(ogf)))
+        oxgf_val = None if pd.isna(oxgf) else int(round(float(oxgf)))
+
+        igf_str  = 'N/A' if igf_val  is None else f'{igf_val}'
+        ixgf_str = 'N/A' if ixgf_val is None else f'{ixgf_val}'
+        ogf_str  = 'N/A' if ogf_val  is None else f'{ogf_val}'
+        oxgf_str = 'N/A' if oxgf_val is None else f'{oxgf_val}'
+
+        with c1: st.metric('Avg. Shot Distance', value = d_str)
+        with c2: st.metric('Avg. Shot Angle', value = a_str)
+        with c3: st.metric('Ind. Goals For', value = igf_str)
+        with c4: st.metric('Ind. Exp. Goals For', value = ixgf_str)
+        with c5: st.metric('On-ice Goals For', value = ogf_str)
+        with c6: st.metric('On-ice Exp. Goals For', value = oxgf_str)
 
 # Format plots.
 c_sanky, c_bar = st.columns(2, gap = 'large', vertical_alignment = 'top')
@@ -227,7 +243,7 @@ with c_bar:
         st.info('No data available for this selection.')
     else:
         # Build column names.
-        METRICS  = ['iCorsiF', 'iFenwickF', 'iSOGF', 'iGF', 'ixGF', 'iGFaX']
+        METRICS = ['iGF', 'ixGF', 'iGFaX', 'oGF', 'oxGF', 'oGFaX']
         pct_cols = [f'{m}_{game_type}{category_suffix}_pct' for m in METRICS]
         pcts     = [r.get(c, float('nan')) for c in pct_cols]
         df       = pd.DataFrame({'metric': METRICS, 'pct': pcts})
