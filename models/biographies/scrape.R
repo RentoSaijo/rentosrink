@@ -4,7 +4,7 @@ suppressMessages(library(stringr))
 suppressMessages(library(nhlscraper))
 
 # Define constants.
-START_SEASON <- 20222023
+START_SEASON <- 20212022
 END_SEASON   <- 20252026
 
 # Get season IDs.

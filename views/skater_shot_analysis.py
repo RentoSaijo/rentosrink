@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from utils import load_biographies, load_skater_shot_analysis
 
 # Hardcode options and decoders.
-SEASONS    = ['20252026', '20242025', '20232024', '20222023']
+SEASONS    = ['20252026', '20242025', '20232024', '20222023', '20212022']
 GAME_TYPES = {'Regular Season': 2, 'Stanley Cup Playoffs': 3}
 CATEGORIES = {'Actual': '', 'Per 82': '_per82', 'Per 60': '_per60'}
 

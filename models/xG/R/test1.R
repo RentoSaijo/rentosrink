@@ -6,7 +6,7 @@ suppressMessages(library(data.table))
 suppressMessages(library(nhlscraper))
 
 # Define constant.
-SEASON <- 20222023
+SEASON <- 20252026
 
 # Define helpers.
 load_shifts <- function(season) {
