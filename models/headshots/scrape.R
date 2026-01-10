@@ -3,7 +3,7 @@ suppressMessages(library(tidyverse))
 suppressMessages(library(nhlscraper))
 
 # Define constant.
-SEASON <- 20252026
+SEASON <- 20222023
 
 # Get all teams.
 teamTriCodes <- nhlscraper::standings(paste0(
