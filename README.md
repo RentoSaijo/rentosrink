@@ -12,9 +12,12 @@
   * [X] Sankey Plot Fix
   * [X] Bar Plot Fix
   * [X] Shot Geometry
-  * [ ] Shifts Data
-  * [ ] On-ice Stats
+  * [X] Shifts Data
+  * [X] On-ice Stats
   * [X] Headshot
   * [ ] Goalie Version
 * [ ] Salary Projection
+  * [X] All-time Stats
+  * [ ] Feature Engineer
+  * [ ] UI/UX
 * [ ] Biweekly Articles
