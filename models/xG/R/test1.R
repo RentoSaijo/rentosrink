@@ -194,6 +194,7 @@ shifts_dt <- as.data.table(shifts) %>%
     start = startSecondsElapsedInPeriod,
     end   = endSecondsElapsedInPeriod
   )] %>%
+  .[!is.na(start) & !is.na(end)] %>%     
   .[end < start, end := start] %>%
   .[, .(gameId, period, playerId, isHome, start, end)]
 shots_dt <- as.data.table(shots) %>%
@@ -308,9 +309,38 @@ skater_onice <- shots %>%
     oGFaX_3 = oGF_3 - oxGF_3,
     .groups = 'drop'
   )
+goalie_ids <- shots %>%
+  distinct(goalieInNetId) %>%
+  filter(!is.na(goalieInNetId)) %>%
+  pull(goalieInNetId)
+skater_onice_again <- shots %>%
+  mutate(
+    isSOG     = typeDescKey %in% c('goal', 'shot-on-goal'),
+    isFenwick = typeDescKey != 'blocked-shot'
+  ) %>%
+  filter(!is.na(playerIdsAgainst)) %>%
+  unnest_longer(playerIdsAgainst, values_to = 'playerId') %>%
+  filter(!playerId %in% goalie_ids) %>%
+  group_by(playerId) %>%
+  summarise(
+    oCorsiA_2 = sum(if_else(!isPlayoff, 1L, 0L), na.rm = TRUE),
+    oCorsiA_3 = sum(if_else( isPlayoff, 1L, 0L), na.rm = TRUE),
+    oFenwickA_2 = sum(if_else(isFenwick & !isPlayoff, 1L, 0L), na.rm = TRUE),
+    oFenwickA_3 = sum(if_else(isFenwick &  isPlayoff, 1L, 0L), na.rm = TRUE),
+    oSOGA_2 = sum(if_else(isSOG & !isPlayoff, 1L, 0L), na.rm = TRUE),
+    oSOGA_3 = sum(if_else(isSOG &  isPlayoff, 1L, 0L), na.rm = TRUE),
+    oGA_2 = sum(if_else(isGoal == 'yes' & !isPlayoff, 1L, 0L), na.rm = TRUE),
+    oGA_3 = sum(if_else(isGoal == 'yes' &  isPlayoff, 1L, 0L), na.rm = TRUE),
+    oxGA_2 = sum(if_else(!isPlayoff, xG, 0), na.rm = TRUE),
+    oxGA_3 = sum(if_else( isPlayoff, xG, 0), na.rm = TRUE),
+    oGAaX_2 = oGA_2 - oxGA_2,
+    oGAaX_3 = oGA_3 - oxGA_3,
+    .groups = 'drop'
+  )
 skater_shots <- skater_shots %>%
-  full_join(skater_onice, by = 'playerId')
-rm(skater_onice)
+  full_join(skater_onice,       by = 'playerId') %>%
+  full_join(skater_onice_again, by = 'playerId')
+rm(skater_onice, skater_onice_again, goalie_ids)
 
 # Calculate goalie shot metrics.
 goalie_shots <- shots %>%
@@ -404,10 +434,10 @@ goalie_shot_analysis <- list(
 rm(goalie_shots, goalie_season_summary_2, goalie_season_summary_3)
 
 # Calculate skater pace metrics.
-metric_cols_2 <- names(skater_shot_analysis) %>% 
-  str_subset('(^[io].*F_2$)|(^[io]x?GF_2$)|(^[io]GFaX_2$)')
-metric_cols_3 <- names(skater_shot_analysis) %>% 
-  str_subset('(^[io].*F_3$)|(^[io]x?GF_3$)|(^[io]GFaX_3$)')
+metric_cols_2 <- names(skater_shot_analysis) %>%
+  str_subset('(^[io].*[FA]_2)|(^[io]x?G[FA]_2)|(^[io]G[FA]aX_2)')
+metric_cols_3 <- names(skater_shot_analysis) %>%
+  str_subset('(^[io].*[FA]_3)|(^[io]x?G[FA]_3)|(^[io]G[FA]aX_3)')
 
 skater_shot_analysis <- skater_shot_analysis %>%
   mutate(
