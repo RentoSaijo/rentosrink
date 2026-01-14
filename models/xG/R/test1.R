@@ -18,6 +18,7 @@ load_shifts <- function(season) {
         season,
         '.csv'
       )) %>% 
+        filter(is.na(eventDescription)) %>% 
         select(
           gameId, 
           period, 
@@ -101,11 +102,10 @@ safe_goalie_summary <- function(season, game_type) {
 
 na_playoff_cols_if_absent <- function(df, playoffs_present) {
   if (isTRUE(playoffs_present)) return(df)
-  
   df %>%
     mutate(
       across(
-        matches("(_3$|_3_per82$|_3_per60$|_3_pct$)"),
+        matches('(_3$|_3_per82$|_3_per60$|_3_pct$)'),
         ~ NA_real_
       )
     )
@@ -140,7 +140,7 @@ shots <- pbps %>%
       'blocked-shot'
     ),
     # Remove shootouts.
-    !(gameTypeId == 2 & period == 5 & secondsElapsedInPeriod == 0)
+    !(gameTypeId == 2 & period == 5)
   ) %>% 
   mutate(
     shootingPlayerId = coalesce(shootingPlayerId, scoringPlayerId),
@@ -190,31 +190,31 @@ model <- readRDS('models/xG/model1.rds')
 
 # Predict xG.
 shots_score <- shots %>%
-  filter(!typeDescKey %in% c('blocked-shot', 'missed-shot'))
-shots_zero <- shots %>%
-  filter(typeDescKey %in% c('blocked-shot', 'missed-shot'))
+  filter(typeDescKey != 'blocked-shot')
+shots_block <- shots %>%
+  filter(typeDescKey == 'blocked-shot')
 probs <- predict(model, shots_score, type = 'prob')
 shots_score <- shots_score %>%
   mutate(xG = probs$.pred_yes)
-shots_zero <- shots_zero %>%
+shots_block <- shots_block %>%
   mutate(xG = 0)
-shots <- bind_rows(shots_score, shots_zero) %>%
+shots <- bind_rows(shots_score, shots_block) %>%
   arrange(gameId, period, secondsElapsedInPeriod)
-
-rm(model, shots_score, shots_zero, probs)
+rm(model, shots_score, shots_block, probs)
 
 # Merge shots and shifts.
 shifts <- load_shifts(SEASON)
 shots  <- shots %>%
   mutate(rowId = row_number())
 shifts_dt <- as.data.table(shifts) %>%
-  .[, `:=`(
-    start = startSecondsElapsedInPeriod,
-    end   = endSecondsElapsedInPeriod
-  )] %>%
-  .[!is.na(start) & !is.na(end)] %>%     
+  .[, `:=`(start = startSecondsElapsedInPeriod,
+           end   = endSecondsElapsedInPeriod)] %>%
+  .[!is.na(start)] %>%
+  .[is.na(end), end := start] %>%
   .[end < start, end := start] %>%
-  .[, .(gameId, period, playerId, isHome, start, end)]
+  .[end > start] %>%
+  .[, start_adj := ifelse(start == 0, 0, start + 1e-6)] %>%  # (start, end]
+  .[, .(gameId, period, playerId, isHome, start = start_adj, end)]
 shots_dt <- as.data.table(shots) %>%
   .[, `:=`(
     t0 = secondsElapsedInPeriod,
@@ -250,12 +250,18 @@ shots <- shots %>%
     playerIdsAgainst = map2(
       playerIdsAgainst, goalieInNetId,
       \(ids, goalie) {
-        if (is.na(goalie)) {
-          ids
-        } else {
-          sort(unique(c(ids %||% integer(), goalie)))
-        }
+        if (is.na(goalie)) ids else sort(unique(c(ids %||% integer(), goalie)))
       }
+    ),
+    playerIdsFor = if_else(
+      skaterCountFor == 1L,
+      map(shootingPlayerId, \(x) if (is.na(x)) integer() else as.integer(x)),
+      playerIdsFor
+    ),
+    playerIdsAgainst = if_else(
+      skaterCountFor == 1L,
+      map(goalieInNetId, \(x) if (is.na(x)) integer() else as.integer(x)),
+      playerIdsAgainst
     )
   ) %>%
   select(-rowId)
@@ -415,13 +421,12 @@ goalie_shots <- goalie_shots %>%
   left_join(goalie_corsi, by = 'playerId')
 rm(goalie_corsi)
 
-# Scrape supplemental data (safe even if playoffs aren't available).
+# Scrape supplemental data.
 skater_season_summary_2 <- safe_skater_summary(SEASON, 2)
 skater_season_summary_3 <- safe_skater_summary(SEASON, 3)
 goalie_season_summary_2 <- safe_goalie_summary(SEASON, 2)
 goalie_season_summary_3 <- safe_goalie_summary(SEASON, 3)
 rm(safe_skater_summary, safe_goalie_summary)
-
 season <- nhlscraper::seasons() %>% 
   filter(id == SEASON)
 
@@ -456,7 +461,6 @@ metric_cols_2 <- names(skater_shot_analysis) %>%
   str_subset('(^[io].*[FA]_2)|(^[io]x?G[FA]_2)|(^[io]G[FA]aX_2)')
 metric_cols_3 <- names(skater_shot_analysis) %>%
   str_subset('(^[io].*[FA]_3)|(^[io]x?G[FA]_3)|(^[io]G[FA]aX_3)')
-
 skater_shot_analysis <- skater_shot_analysis %>%
   mutate(
     across(
@@ -591,8 +595,14 @@ goalie_shot_analysis <- goalie_shot_analysis %>%
 rm(metric_cols_2, metric_cols_3, goalie_min_games_2, goalie_min_mins_3, season)
 
 # Remove playoff data if not present.
-skater_shot_analysis <- na_playoff_cols_if_absent(skater_shot_analysis, PLAYOFFS_PRESENT)
-goalie_shot_analysis <- na_playoff_cols_if_absent(goalie_shot_analysis, PLAYOFFS_PRESENT)
+skater_shot_analysis <- na_playoff_cols_if_absent(
+  skater_shot_analysis, 
+  PLAYOFFS_PRESENT
+)
+goalie_shot_analysis <- na_playoff_cols_if_absent(
+  goalie_shot_analysis, 
+  PLAYOFFS_PRESENT
+)
 
 # Write to CSV.
 write_csv(skater_shot_analysis, paste0(

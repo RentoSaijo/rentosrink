@@ -51,7 +51,8 @@ shots <- pbps %>%
     # Keep only shots.
     typeDescKey %in% c(
       'goal', 
-      'shot-on-goal'
+      'shot-on-goal',
+      'missed-shot'
     )
   ) %>% 
   mutate(
