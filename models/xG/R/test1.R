@@ -6,7 +6,7 @@ suppressMessages(library(data.table))
 suppressMessages(library(nhlscraper))
 
 # Define constant.
-SEASON <- 20252026
+SEASON <- 20112012
 
 # Define helpers.
 load_shifts <- function(season) {
@@ -99,6 +99,18 @@ safe_goalie_summary <- function(season, game_type) {
     )
 }
 
+na_playoff_cols_if_absent <- function(df, playoffs_present) {
+  if (isTRUE(playoffs_present)) return(df)
+  
+  df %>%
+    mutate(
+      across(
+        matches("(_3$|_3_per82$|_3_per60$|_3_pct$)"),
+        ~ NA_real_
+      )
+    )
+}
+
 # Load data.
 pbps <- nhlscraper::gc_pbps(SEASON)
 
@@ -170,20 +182,26 @@ shots <- pbps %>%
   )
 rm(pbps)
 
+# Detect playoffs.
+PLAYOFFS_PRESENT <- any(shots$isPlayoff, na.rm = TRUE)
+
 # Load model.
 model <- readRDS('models/xG/model1.rds')
 
 # Predict xG.
-shots_score <- shots %>% filter(typeDescKey != 'blocked-shot')
-shots_block <- shots %>% filter(typeDescKey == 'blocked-shot')
-probs       <- predict(model, shots_score, type = 'prob')
+shots_score <- shots %>%
+  filter(!typeDescKey %in% c('blocked-shot', 'missed-shot'))
+shots_zero <- shots %>%
+  filter(typeDescKey %in% c('blocked-shot', 'missed-shot'))
+probs <- predict(model, shots_score, type = 'prob')
 shots_score <- shots_score %>%
   mutate(xG = probs$.pred_yes)
-shots_block <- shots_block %>%
+shots_zero <- shots_zero %>%
   mutate(xG = 0)
-shots       <- bind_rows(shots_score, shots_block) %>%
+shots <- bind_rows(shots_score, shots_zero) %>%
   arrange(gameId, period, secondsElapsedInPeriod)
-rm(model, shots_score, shots_block, probs)
+
+rm(model, shots_score, shots_zero, probs)
 
 # Merge shots and shifts.
 shifts <- load_shifts(SEASON)
@@ -572,6 +590,10 @@ goalie_shot_analysis <- goalie_shot_analysis %>%
   )
 rm(metric_cols_2, metric_cols_3, goalie_min_games_2, goalie_min_mins_3, season)
 
+# Remove playoff data if not present.
+skater_shot_analysis <- na_playoff_cols_if_absent(skater_shot_analysis, PLAYOFFS_PRESENT)
+goalie_shot_analysis <- na_playoff_cols_if_absent(goalie_shot_analysis, PLAYOFFS_PRESENT)
+
 # Write to CSV.
 write_csv(skater_shot_analysis, paste0(
   'data/skater_shot_analysis_', 
@@ -583,4 +605,4 @@ write_csv(goalie_shot_analysis, paste0(
   SEASON,
   '.csv'
 ))
-rm(SEASON)
+rm(SEASON, PLAYOFFS_PRESENT, load_shifts, na_playoff_cols_if_absent)

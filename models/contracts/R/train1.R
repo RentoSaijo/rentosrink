@@ -48,3 +48,5 @@ goalie_contracts <- contracts %>%
   filter(position == 'G') %>% 
   select(-position)
 rm(contracts)
+
+
