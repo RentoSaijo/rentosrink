@@ -209,3 +209,45 @@ contracts <- contracts %>%
 
 # Write to CSV.
 write_csv(contracts, 'models/contracts/data/contracts.csv')
+
+# Create data.frame of salary caps.
+caps <- tibble::tibble(
+  season       = c(
+    '20142015',
+    '20152016',
+    '20162017',
+    '20172018',
+    '20182019',
+    '20192020',
+    '20202021',
+    '20212022',
+    '20222023',
+    '20232024',
+    '20242025',
+    '20252026',
+    '20262027',
+    '20272028'
+  ),
+  cap_millions = c(
+    69.0,
+    71.4,
+    73.0,
+    75.0,
+    79.5,
+    81.5,
+    81.5,
+    81.5,
+    82.5,
+    83.5,
+    88.0,
+    95.5,
+    104.0,
+    113.5
+  )
+) %>%
+  dplyr::mutate(cap = cap_millions * 1e6) %>%
+  as.data.frame() %>%
+  select(season, cap)
+
+# Write to CSV.
+write_csv(caps, 'models/contracts/data/caps.csv')
