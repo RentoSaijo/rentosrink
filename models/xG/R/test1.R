@@ -6,7 +6,7 @@ suppressMessages(library(data.table))
 suppressMessages(library(nhlscraper))
 
 # Define constant.
-SEASON <- 20112012
+SEASON <- 20252026
 
 # Define helpers.
 load_shifts <- function(season) {
@@ -111,6 +111,38 @@ na_playoff_cols_if_absent <- function(df, playoffs_present) {
     )
 }
 
+infer_home_def_side_legacy <- function(pbp) {
+  pbp %>%
+    group_by(gameId) %>%
+    group_modify(function(df, key) {
+      if ('homeTeamDefendingSide' %in% names(df) && any(!is.na(df$homeTeamDefendingSide))) {
+        return(df)
+      }
+      ref <- df %>%
+        filter(!is.na(xCoord), zoneCode == 'O', !is.na(isHome)) %>%
+        arrange(period, secondsElapsedInPeriod) %>%
+        slice(1)
+      if (nrow(ref) == 0) {
+        df$homeTeamDefendingSide <- NA_character_
+        return(df)
+      }
+      ref_period <- ref$period[1]
+      x          <- ref$xCoord[1]
+      ref_isHome <- ref$isHome[1]
+      home_attacks_right_in_ref_period <- (ref_isHome && x > 0) || (!ref_isHome && x < 0)
+      home_def_left_in_ref_period <- home_attacks_right_in_ref_period
+      df %>%
+        mutate(
+          homeTeamDefendingSide = if_else(
+            ((period - ref_period) %% 2) == 0,
+            if_else(home_def_left_in_ref_period, 'left', 'right'),
+            if_else(!home_def_left_in_ref_period, 'left', 'right')
+          )
+        )
+    }) %>%
+    ungroup()
+}
+
 # Load data.
 pbps <- nhlscraper::gc_pbps(SEASON)
 
@@ -118,11 +150,13 @@ pbps <- nhlscraper::gc_pbps(SEASON)
 pbps <- pbps %>% 
   nhlscraper::flag_is_home() %>% 
   nhlscraper::strip_game_id() %>% 
+  filter(gameTypeId %in% 2:3) %>% 
   nhlscraper::strip_time_period() %>% 
   nhlscraper::strip_situation_code() %>% 
   nhlscraper::flag_is_rebound() %>% 
   nhlscraper::flag_is_rush() %>% 
-  nhlscraper::count_goals_shots() %>% 
+  nhlscraper::count_goals_shots() %>%
+  infer_home_def_side_legacy() %>% 
   nhlscraper::normalize_coordinates() %>% 
   nhlscraper::calculate_distance() %>% 
   nhlscraper::calculate_angle()
@@ -130,8 +164,6 @@ pbps <- pbps %>%
 # Create testing set.
 shots <- pbps %>% 
   filter(
-    # Keep only regular season and playoffs (if playoffs exist, they’ll be included).
-    gameTypeId %in% 2:3,
     # Keep only shots.
     typeDescKey %in% c(
       'goal', 
