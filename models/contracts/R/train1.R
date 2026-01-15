@@ -41,7 +41,9 @@ contracts <- read_csv(
     term,
     AAV
   ) %>% 
-  filter(startSeason >= START_SEASON & startSeason <= END_SEASON + 10001)
+  filter(startSeason >= START_SEASON & startSeason <= END_SEASON + 10001) %>%
+  # Non-ELCs
+  filter(!isFirst)
 
 # Get caps.
 caps <- read_csv('models/contracts/data/caps.csv', show_col_types = FALSE) %>% 

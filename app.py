@@ -24,12 +24,17 @@ goalie_shot_analysis_page = st.Page(
     title = 'Goalie Shot Analysis',
     icon  = ':material/readiness_score:'
 )
+contract_projection_page = st.Page(
+    page  = 'views/contract_projection.py',
+    title = 'Contract Projection',
+    icon  = ':material/attach_money:'
+)
 
 # Set up navigation.
 pg = st.navigation(
     {
         'About': [home_page],
-        'Models': [skater_shot_analysis_page, goalie_shot_analysis_page]
+        'Models': [skater_shot_analysis_page, goalie_shot_analysis_page, contract_projection_page]
     }
 )
 pg.run()

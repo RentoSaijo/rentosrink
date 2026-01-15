@@ -204,8 +204,7 @@ contracts <- contracts %>%
     prevTerm = lag(term),
     prevAAV  = lag(AAV)
   ) %>%
-  ungroup() %>% 
-  filter(!isFirst & startSeason >= 20142015)
+  ungroup()
 
 # Write to CSV.
 write_csv(contracts, 'models/contracts/data/contracts.csv')

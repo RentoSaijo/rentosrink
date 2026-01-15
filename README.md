@@ -18,6 +18,6 @@
   * [ ] Goalie Version
 * [ ] Salary Projection
   * [X] All-time Stats
-  * [ ] Feature Engineer
-  * [ ] UI/UX
+  * [X] Feature Engineer
+  * [X] UI/UX
 * [ ] Biweekly Articles
