@@ -24,9 +24,9 @@ make_folds <- function(df) {
 
 # Read from CSV.
 contracts <- read_csv(
-  'models/contracts/data/contracts.csv', 
+  'models/contracts/data/contracts.csv',
   show_col_types = FALSE
-) %>% 
+) %>%
   select(
     # IDs
     playerId,
@@ -40,17 +40,17 @@ contracts <- read_csv(
     # Responses
     term,
     AAV
-  ) %>% 
+  ) %>%
   filter(startSeason >= START_SEASON & startSeason <= END_SEASON + 10001) %>%
   # Non-ELCs
   filter(!isFirst)
 
 # Get caps.
-caps <- read_csv('models/contracts/data/caps.csv', show_col_types = FALSE) %>% 
+caps <- read_csv('models/contracts/data/caps.csv', show_col_types = FALSE) %>%
   select(startSeason = season, cap)
 
 # Get bios.
-bios <- players() %>% 
+bios <- players() %>%
   select(
     playerId = id,
     fullName,
@@ -66,10 +66,10 @@ contracts <- left_join(contracts, caps, by = 'startSeason')
 rm(bios, caps)
 
 # Split data.
-skater_contracts <- contracts %>% 
+skater_contracts <- contracts %>%
   filter(position != 'G')
-goalie_contracts <- contracts %>% 
-  filter(position == 'G') %>% 
+goalie_contracts <- contracts %>%
+  filter(position == 'G') %>%
   select(-position)
 rm(contracts)
 
@@ -96,7 +96,10 @@ skater_toi_reports <- purrr::map_dfr(
         sTOI_per82 = shTimeOnIcePerGame / 60 * 82
       ) %>%
       dplyr::select(playerId, seasonId, gamesPlayed, eTOI_per82, pTOI_per82, sTOI_per82) %>%
-      dplyr::mutate(across(c(eTOI_per82, pTOI_per82, sTOI_per82), \(x) dplyr::coalesce(x, 0)))
+      dplyr::mutate(
+        gamesPlayed = dplyr::coalesce(gamesPlayed, 0),
+        across(c(eTOI_per82, pTOI_per82, sTOI_per82), \(x) dplyr::coalesce(x, 0))
+      )
   }
 ) %>%
   as.data.frame()
@@ -149,11 +152,11 @@ skater_contracts <- skater_contracts %>%
     e_t1  = dplyr::coalesce(e_t1, 0),  e_t2  = dplyr::coalesce(e_t2, 0),  e_t3  = dplyr::coalesce(e_t3, 0),
     p_t1  = dplyr::coalesce(p_t1, 0),  p_t2  = dplyr::coalesce(p_t2, 0),  p_t3  = dplyr::coalesce(p_t3, 0),
     s_t1  = dplyr::coalesce(s_t1, 0),  s_t2  = dplyr::coalesce(s_t2, 0),  s_t3  = dplyr::coalesce(s_t3, 0),
-    
+
     GP_3yr_wavg =
       (3 * gp_t1 + 2 * gp_t2 + 1 * gp_t3) /
       (3 * (gp_t1 != 0) + 2 * (gp_t2 != 0) + 1 * (gp_t3 != 0)),
-    
+
     eTOI_per82_3yr_wavg =
       (3 * e_t1 + 2 * e_t2 + 1 * e_t3) /
       (3 * (e_t1 != 0) + 2 * (e_t2 != 0) + 1 * (e_t3 != 0)),
@@ -242,7 +245,7 @@ skater_contracts <- skater_contracts %>%
     ix_t1 = dplyr::coalesce(ix_t1, 0), ix_t2 = dplyr::coalesce(ix_t2, 0), ix_t3 = dplyr::coalesce(ix_t3, 0),
     oxGF_t1 = dplyr::coalesce(oxGF_t1, 0), oxGF_t2 = dplyr::coalesce(oxGF_t2, 0), oxGF_t3 = dplyr::coalesce(oxGF_t3, 0),
     oxGA_t1 = dplyr::coalesce(oxGA_t1, 0), oxGA_t2 = dplyr::coalesce(oxGA_t2, 0), oxGA_t3 = dplyr::coalesce(oxGA_t3, 0),
-    
+
     ixGF_per82_3yr_wavg =
       (3 * ix_t1 + 2 * ix_t2 + 1 * ix_t3) /
       (3 * (ix_t1 != 0) + 2 * (ix_t2 != 0) + 1 * (ix_t3 != 0)),
@@ -267,17 +270,17 @@ skater_contracts <- skater_contracts %>%
 rm(skater_shot_reports)
 
 # Prepare for models.
-skater_contracts <- skater_contracts %>% 
-  filter(!is.na(age)) %>% 
+skater_contracts <- skater_contracts %>%
+  filter(!is.na(age)) %>%
   mutate(
     position = factor(position),
     hand     = factor(hand)
   )
 
-# --- TERM MODEL --- #
+# --- TERM MODEL (REGRESSION) --- #
 
 # Keep relevant columns.
-skater_contracts_term <- skater_contracts %>%
+skater_contracts_term_reg <- skater_contracts %>%
   select(
     # IDs
     playerId,
@@ -303,13 +306,17 @@ skater_contracts_term <- skater_contracts %>%
     oxGA_per82_3yr_wavg,
     # Response
     term
+  ) %>%
+  mutate(
+    # IMPORTANT: do NOT clip for regression; keep original numeric term.
+    term = as.numeric(term)
   )
 
 # Define folds.
-folds <- make_folds(skater_contracts_term)
+folds <- make_folds(skater_contracts_term_reg)
 
 # Define recipe.
-rec <- recipe(term ~ ., data = skater_contracts_term) %>%
+rec <- recipe(term ~ ., data = skater_contracts_term_reg) %>%
   update_role(
     playerId,
     fullName,
@@ -323,14 +330,14 @@ rec <- recipe(term ~ ., data = skater_contracts_term) %>%
 
 # Define XGB specs.
 xgb_spec <- boost_tree(
-  mode          = 'regression',
-  trees         = tune(),
-  tree_depth    = tune(),
-  learn_rate    = tune(),
-  min_n         = tune(),
-  sample_size   = tune(),
-  loss_reduction= tune(),
-  mtry          = tune()
+  mode           = 'regression',
+  trees          = tune(),
+  tree_depth     = tune(),
+  learn_rate     = tune(),
+  min_n          = tune(),
+  sample_size    = tune(),
+  loss_reduction = tune(),
+  mtry           = tune()
 ) %>%
   set_engine('xgboost', eval_metric = 'rmse')
 
@@ -352,7 +359,7 @@ params <- extract_parameter_set_dials(wf) %>%
 
 # Set mtry bounds based on baked predictors.
 tmp <- prep(rec)
-p   <- ncol(bake(tmp, new_data = skater_contracts_term) %>% select(-term))
+p   <- ncol(bake(tmp, new_data = skater_contracts_term_reg) %>% select(-term))
 params <- params %>%
   update(mtry = mtry(c(2L, min(60L, p))))
 rm(tmp, p)
@@ -368,7 +375,8 @@ res <- tune_grid(
 )
 best     <- select_best(res, metric = 'rmse')
 final_wf <- finalize_workflow(wf, best)
-model    <- fit(final_wf, data = skater_contracts_term)
+model    <- fit(final_wf, data = skater_contracts_term_reg)
+
 rm(res, best, final_wf, folds, grid, params, rec, wf, xgb_spec)
 
 # See importance.
@@ -379,9 +387,123 @@ rm(booster, imp)
 
 # Export to RDS.
 saveRDS(model, file = 'models/contracts/skater_term_model1.rds')
-rm(model)
+rm(model, skater_contracts_term_reg)
 
-# --- AAV MODEL --- #
+# --- TERM MODEL (CLASSIFICATION) --- #
+
+# Keep relevant columns.
+skater_contracts_term_cls <- skater_contracts %>%
+  select(
+    # IDs
+    playerId,
+    fullName,
+    isFirst,
+    isLast,
+    # Predictors
+    startSeason,
+    cap,
+    prevTerm,
+    prevAAV,
+    age,
+    position,
+    height,
+    weight,
+    hand,
+    GP_3yr_wavg,
+    eTOI_per82_3yr_wavg,
+    pTOI_per82_3yr_wavg,
+    sTOI_per82_3yr_wavg,
+    ixGF_per82_3yr_wavg,
+    oxGF_per82_3yr_wavg,
+    oxGA_per82_3yr_wavg,
+    # Response
+    term
+  ) %>%
+  mutate(
+    # IMPORTANT: only classification buckets to 1..8.
+    term = pmin(pmax(round(as.numeric(term)), 1), 8),
+    term = factor(term, levels = as.character(1:8))
+  )
+
+# Define folds.
+folds <- make_folds(skater_contracts_term_cls)
+
+# Define recipe.
+rec <- recipe(term ~ ., data = skater_contracts_term_cls) %>%
+  update_role(
+    playerId,
+    fullName,
+    isFirst,
+    isLast,
+    new_role = 'id'
+  ) %>%
+  step_novel(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors())
+
+# Define XGB specs.
+xgb_spec <- boost_tree(
+  mode           = 'classification',
+  trees          = tune(),
+  tree_depth     = tune(),
+  learn_rate     = tune(),
+  min_n          = tune(),
+  sample_size    = tune(),
+  loss_reduction = tune(),
+  mtry           = tune()
+) %>%
+  set_engine('xgboost', eval_metric = 'mlogloss')
+
+# Define workflow.
+wf <- workflow() %>%
+  add_recipe(rec) %>%
+  add_model(xgb_spec)
+
+# Define parameters.
+params <- extract_parameter_set_dials(wf) %>%
+  update(
+    trees          = trees(c(500L, 3000L)),
+    tree_depth     = tree_depth(c(2L, 8L)),
+    learn_rate     = learn_rate(range = c(-4, -1)),  # 1e-4 to 1e-1
+    min_n          = min_n(c(2L, 50L)),
+    sample_size    = sample_prop(c(0.6, 1.0)),
+    loss_reduction = loss_reduction(c(0, 10))
+  )
+
+# Set mtry bounds based on baked predictors.
+tmp <- prep(rec)
+p   <- ncol(bake(tmp, new_data = skater_contracts_term_cls) %>% select(-term))
+params <- params %>%
+  update(mtry = mtry(c(2L, min(60L, p))))
+rm(tmp, p)
+
+# Tune.
+grid <- grid_space_filling(params, size = 40)
+res <- tune_grid(
+  wf,
+  resamples = folds,
+  grid      = grid,
+  metrics   = metric_set(mn_log_loss, accuracy),
+  control   = control_grid(save_pred = TRUE)
+)
+
+best     <- select_best(res, metric = 'mn_log_loss')
+final_wf <- finalize_workflow(wf, best)
+model    <- fit(final_wf, data = skater_contracts_term_cls)
+
+rm(res, best, final_wf, folds, grid, params, rec, wf, xgb_spec)
+
+# See importance.
+booster <- extract_fit_engine(model)
+imp     <- xgb.importance(model = booster)
+xgb.plot.importance(imp)
+rm(booster, imp)
+
+# Export to RDS.
+saveRDS(model, file = 'models/contracts/skater_termProb_model1.rds')
+rm(model, skater_contracts_term_cls)
+
+# --- AAV MODEL (REGRESSION) --- #
 
 # Keep relevant columns.
 skater_contracts_AAV <- skater_contracts %>%
@@ -431,14 +553,14 @@ rec <- recipe(AAV ~ ., data = skater_contracts_AAV) %>%
 
 # Define XGB specs.
 xgb_spec <- boost_tree(
-  mode          = 'regression',
-  trees         = tune(),
-  tree_depth    = tune(),
-  learn_rate    = tune(),
-  min_n         = tune(),
-  sample_size   = tune(),
-  loss_reduction= tune(),
-  mtry          = tune()
+  mode           = 'regression',
+  trees          = tune(),
+  tree_depth     = tune(),
+  learn_rate     = tune(),
+  min_n          = tune(),
+  sample_size    = tune(),
+  loss_reduction = tune(),
+  mtry           = tune()
 ) %>%
   set_engine('xgboost', eval_metric = 'rmse')
 
@@ -488,4 +610,4 @@ rm(booster, imp)
 
 # Export to RDS.
 saveRDS(model, file = 'models/contracts/skater_AAV_model1.rds')
-rm(model, make_folds)
+rm(model, make_folds, skater_contracts_AAV, skater_contracts)

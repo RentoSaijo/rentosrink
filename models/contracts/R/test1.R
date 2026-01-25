@@ -6,11 +6,13 @@ suppressMessages(library(nhlscraper))
 # Set constant.
 SEASON = 20262027
 
-# Read from CSV.
+# --- INPUTS --- #
+
+# Read from CSV (all historical contracts).
 contracts <- read_csv(
-  'models/contracts/data/contracts.csv', 
+  'models/contracts/data/contracts.csv',
   show_col_types = FALSE
-) %>% 
+) %>%
   select(
     # IDs
     playerId,
@@ -27,7 +29,7 @@ contracts <- read_csv(
   )
 
 # Get bios.
-bios <- players() %>% 
+bios <- players() %>%
   select(
     playerId = id,
     fullName,
@@ -41,6 +43,9 @@ bios <- players() %>%
 contracts <- left_join(contracts, bios, by = 'playerId')
 rm(bios)
 
+# Keep a copy of ALL historical contracts (with bios) for later.
+contracts_all <- contracts
+
 # Pull cap for SEASON.
 cap_SEASON <- read_csv('models/contracts/data/caps.csv', show_col_types = FALSE) %>%
   transmute(startSeason = season, cap) %>%
@@ -48,41 +53,54 @@ cap_SEASON <- read_csv('models/contracts/data/caps.csv', show_col_types = FALSE)
   pull(cap) %>%
   .[[1]]
 
-# Keep only free agents.
-contracts <- contracts %>%
-  filter(isLast) %>% 
+# --- BUILD FREE AGENT PREDICTION BASE (1 ROW PER PLAYER) --- #
+
+# Identify free agents whose most-recent deal ends in SEASON.
+fa_base <- contracts_all %>%
+  filter(isLast) %>%
   mutate(endSeason = startSeason + term * 10001) %>%
   filter(endSeason == SEASON) %>%
   group_by(playerId) %>%
   arrange(startSeason, .by_group = TRUE) %>%
   slice_tail(n = 1) %>%
-  ungroup() %>%
+  ungroup()
+
+# Keep ALL historical contracts for those free agents.
+contracts_hist_fa <- contracts_all %>%
+  filter(playerId %in% fa_base$playerId) %>%
+  select(playerId, startSeason, age, term, AAV)
+
+# Build the SEASON row to predict (prevTerm/prevAAV come from last contract in fa_base).
+contracts <- fa_base %>%
   transmute(
     playerId,
     fullName,
-    isFirst    = FALSE,
-    isLast     = TRUE,
-    startSeason= SEASON,
-    cap        = cap_SEASON,
-    prevTerm   = term,
-    prevAAV    = AAV,
-    age        = age + ((SEASON - startSeason) / 10001),
+    isFirst     = FALSE,
+    isLast      = TRUE,
+    startSeason = SEASON,
+    cap         = cap_SEASON,
+    prevTerm    = term,
+    prevAAV     = AAV,
+    age         = age + ((SEASON - startSeason) / 10001),
     position,
     height,
     weight,
     hand
   )
-rm(cap_SEASON)
+
+rm(cap_SEASON, contracts_all, fa_base)
 
 # Split data.
-skater_contracts <- contracts %>% 
+skater_contracts <- contracts %>%
   filter(position != 'G')
-goalie_contracts <- contracts %>% 
-  filter(position == 'G') %>% 
+goalie_contracts <- contracts %>%
+  filter(position == 'G') %>%
   select(-position)
 rm(contracts)
 
-# Get skater time-on-ice data (only the 3 seasons prior to SEASON).
+# --- SKATER FEATURES (ONLY 3 SEASONS PRIOR TO SEASON) --- #
+
+# Get skater time-on-ice data.
 skater_toi_reports <- purrr::map_dfr(
   c(SEASON - 10001, SEASON - 20002, SEASON - 30003),
   \(s) {
@@ -105,7 +123,10 @@ skater_toi_reports <- purrr::map_dfr(
         sTOI_per82 = shTimeOnIcePerGame / 60 * 82
       ) %>%
       dplyr::select(playerId, seasonId, gamesPlayed, eTOI_per82, pTOI_per82, sTOI_per82) %>%
-      dplyr::mutate(across(c(eTOI_per82, pTOI_per82, sTOI_per82), \(x) dplyr::coalesce(x, 0)))
+      dplyr::mutate(
+        gamesPlayed = dplyr::coalesce(gamesPlayed, 0),
+        across(c(eTOI_per82, pTOI_per82, sTOI_per82), \(x) dplyr::coalesce(x, 0))
+      )
   }
 ) %>%
   as.data.frame()
@@ -158,11 +179,11 @@ skater_contracts <- skater_contracts %>%
     e_t1  = dplyr::coalesce(e_t1, 0),  e_t2  = dplyr::coalesce(e_t2, 0),  e_t3  = dplyr::coalesce(e_t3, 0),
     p_t1  = dplyr::coalesce(p_t1, 0),  p_t2  = dplyr::coalesce(p_t2, 0),  p_t3  = dplyr::coalesce(p_t3, 0),
     s_t1  = dplyr::coalesce(s_t1, 0),  s_t2  = dplyr::coalesce(s_t2, 0),  s_t3  = dplyr::coalesce(s_t3, 0),
-    
+
     GP_3yr_wavg =
       (3 * gp_t1 + 2 * gp_t2 + 1 * gp_t3) /
       (3 * (gp_t1 != 0) + 2 * (gp_t2 != 0) + 1 * (gp_t3 != 0)),
-    
+
     eTOI_per82_3yr_wavg =
       (3 * e_t1 + 2 * e_t2 + 1 * e_t3) /
       (3 * (e_t1 != 0) + 2 * (e_t2 != 0) + 1 * (e_t3 != 0)),
@@ -188,7 +209,7 @@ skater_contracts <- skater_contracts %>%
   )
 rm(skater_toi_reports)
 
-# Get skater shot analysis data (only the 3 seasons prior to SEASON).
+# Get skater shot analysis data.
 skater_shot_reports <- purrr::map_dfr(
   c(SEASON - 10001, SEASON - 20002, SEASON - 30003),
   \(s) {
@@ -251,7 +272,7 @@ skater_contracts <- skater_contracts %>%
     ix_t1 = dplyr::coalesce(ix_t1, 0), ix_t2 = dplyr::coalesce(ix_t2, 0), ix_t3 = dplyr::coalesce(ix_t3, 0),
     oxGF_t1 = dplyr::coalesce(oxGF_t1, 0), oxGF_t2 = dplyr::coalesce(oxGF_t2, 0), oxGF_t3 = dplyr::coalesce(oxGF_t3, 0),
     oxGA_t1 = dplyr::coalesce(oxGA_t1, 0), oxGA_t2 = dplyr::coalesce(oxGA_t2, 0), oxGA_t3 = dplyr::coalesce(oxGA_t3, 0),
-    
+
     ixGF_per82_3yr_wavg =
       (3 * ix_t1 + 2 * ix_t2 + 1 * ix_t3) /
       (3 * (ix_t1 != 0) + 2 * (ix_t2 != 0) + 1 * (ix_t3 != 0)),
@@ -275,13 +296,14 @@ skater_contracts <- skater_contracts %>%
   )
 rm(skater_shot_reports)
 
-# Predict terms.
-term_model <- readRDS('models/contracts/skater_term_model1.rds')
+# --- PREDICT --- #
+
+# Prepare columns once (both term models + AAV model use the same predictors here).
 skater_contracts <- skater_contracts %>%
   mutate(
     position = factor(position),
     hand     = factor(hand)
-  ) %>% 
+  ) %>%
   select(
     # IDs
     playerId,
@@ -305,49 +327,151 @@ skater_contracts <- skater_contracts %>%
     ixGF_per82_3yr_wavg,
     oxGF_per82_3yr_wavg,
     oxGA_per82_3yr_wavg
-  ) %>%
-  mutate(
-    term = predict(term_model, new_data = ., type = 'numeric')$.pred
   )
-rm(term_model)
 
-# Predict AAVs.
+# --- TERM (REGRESSION) FOR PROJECTED CONTRACT --- #
+term_reg_model <- readRDS('models/contracts/skater_term_model1.rds')
+
+skater_contracts <- skater_contracts %>%
+  mutate(
+    # IMPORTANT: do NOT clip the regression prediction itself.
+    xTerm_reg_raw = predict(term_reg_model, new_data = ., type = 'numeric')$.pred,
+
+    # Only create a 1..8 integer version for AAV lookup (grid is 1..8).
+    xTerm_reg_int = pmin(pmax(round(xTerm_reg_raw), 1), 8)
+  )
+
+rm(term_reg_model)
+
+# --- TERM PROBABILITIES (CLASSIFICATION) FOR POSSIBILITIES --- #
+term_prob_model <- readRDS('models/contracts/skater_termProb_model1.rds')
+
+term_probs <- predict(term_prob_model, new_data = skater_contracts, type = 'prob') %>%
+  dplyr::as_tibble() %>%
+  {
+    nm <- names(.)
+    nm <- gsub("^\\.pred_", "termProb_", nm)
+    nm <- gsub("^pred_", "termProb_", nm)
+    names(.) <- nm
+    .
+  }
+
+# ensure termProb_1..termProb_8 exist (in case model returns only seen classes)
+for (k in 1:8) {
+  col <- paste0('termProb_', k)
+  if (!col %in% names(term_probs)) term_probs[[col]] <- 0
+}
+term_probs <- term_probs %>%
+  select(termProb_1, termProb_2, termProb_3, termProb_4, termProb_5, termProb_6, termProb_7, termProb_8)
+
+skater_contracts <- bind_cols(skater_contracts, term_probs) %>%
+  mutate(
+    xTerm_cls = max.col(
+      dplyr::select(., dplyr::starts_with('termProb_')) %>% as.matrix(),
+      ties.method = 'first'
+    )
+  )
+
+rm(term_prob_model, term_probs)
+
+# --- AAV (REGRESSION) USING TERM GRID --- #
 AAV_model <- readRDS('models/contracts/skater_AAV_model1.rds')
-skater_contracts <- skater_contracts %>% 
-  mutate(
-    AAV   = predict(AAV_model, new_data = ., type = 'numeric')$.pred
-  )
-rm(AAV_model)
 
-# Attach back to contracts.
-contracts <- read_csv(
-  'models/contracts/data/contracts.csv', 
-  show_col_types = FALSE
-) %>% 
+# Build a term grid: duplicate each player row 8 times, set term = 1..8.
+skater_contracts_termgrid <- skater_contracts %>%
   select(
+    -xTerm_reg_raw,
+    -xTerm_reg_int,
+    -xTerm_cls,
+    -dplyr::starts_with('termProb_')
+  ) %>%
+  tidyr::crossing(term = 1:8)
+
+# Predict AAV on the grid.
+skater_contracts_termgrid <- skater_contracts_termgrid %>%
+  mutate(
+    AAV = predict(AAV_model, new_data = ., type = 'numeric')$.pred
+  )
+
+# Pivot wide to get xAAV_1 ... xAAV_8.
+skater_contracts_aav_wide <- skater_contracts_termgrid %>%
+  transmute(playerId, term, AAV) %>%
+  mutate(term = as.integer(term)) %>%
+  tidyr::pivot_wider(
+    names_from   = term,
+    values_from  = AAV,
+    names_prefix = 'xAAV_'
+  )
+
+# Attach xAAV_* columns back, and compute:
+# - xAAV_reg using xTerm_reg_int (for projected contract)
+# - xAAV_cls using xTerm_cls (for reference, if you want it later)
+skater_contracts <- skater_contracts %>%
+  left_join(skater_contracts_aav_wide, by = 'playerId') %>%
+  mutate(
+    xAAV_reg = dplyr::case_when(
+      xTerm_reg_int == 1 ~ xAAV_1,
+      xTerm_reg_int == 2 ~ xAAV_2,
+      xTerm_reg_int == 3 ~ xAAV_3,
+      xTerm_reg_int == 4 ~ xAAV_4,
+      xTerm_reg_int == 5 ~ xAAV_5,
+      xTerm_reg_int == 6 ~ xAAV_6,
+      xTerm_reg_int == 7 ~ xAAV_7,
+      TRUE               ~ xAAV_8
+    ),
+    xAAV_cls = dplyr::case_when(
+      xTerm_cls == 1 ~ xAAV_1,
+      xTerm_cls == 2 ~ xAAV_2,
+      xTerm_cls == 3 ~ xAAV_3,
+      xTerm_cls == 4 ~ xAAV_4,
+      xTerm_cls == 5 ~ xAAV_5,
+      xTerm_cls == 6 ~ xAAV_6,
+      xTerm_cls == 7 ~ xAAV_7,
+      TRUE           ~ xAAV_8
+    )
+  )
+
+rm(AAV_model, skater_contracts_termgrid, skater_contracts_aav_wide)
+
+# --- OUTPUTS --- #
+
+# 1) Contract projection:
+#    - term uses regression model output (raw, not clipped)
+#    - AAV uses regression AAV grid lookup at xTerm_reg_int (1..8)
+contracts_new <- skater_contracts %>%
+  transmute(
     playerId,
     startSeason,
     age,
-    term,
-    AAV
-  ) %>% 
-  filter(playerId %in% skater_contracts$playerId)
-contracts <- dplyr::bind_rows(
-  contracts,
-  skater_contracts %>%
-    transmute(
-      playerId,
-      startSeason,
-      age,
-      term,
-      AAV
-    )
+    term = xTerm_reg_raw,
+    AAV  = xAAV_reg
+  )
+
+contract_projection <- bind_rows(
+  contracts_hist_fa,
+  contracts_new
 ) %>%
   arrange(playerId, startSeason) %>%
-  group_by(playerId) %>%
-  arrange(startSeason, .by_group = TRUE) %>%
-  ungroup() %>%
   as.data.frame()
 
-# Write to CSV.
-write_csv(contracts, 'data/contract_projection_20262027.csv')
+write_csv(
+  contract_projection,
+  glue::glue('data/contract_projection_{SEASON}.csv')
+)
+
+# 2) Contract possibilities (AAV for each possible term 1..8 + classification term probabilities).
+contract_possibility <- skater_contracts %>%
+  select(
+    playerId,
+    xAAV_1, xAAV_2, xAAV_3, xAAV_4, xAAV_5, xAAV_6, xAAV_7, xAAV_8,
+    termProb_1, termProb_2, termProb_3, termProb_4, termProb_5, termProb_6, termProb_7, termProb_8
+  ) %>%
+  arrange(playerId) %>%
+  as.data.frame()
+
+write_csv(
+  contract_possibility,
+  glue::glue('data/contract_possibility_{SEASON}.csv')
+)
+
+rm(contracts_hist_fa, contracts_new)
