@@ -14,7 +14,7 @@ SEASON_OPTIONS = list(SEASON_LABELS.keys())
 def _img(path, fallback=None):
     if path and os.path.exists(path):
         st.image(path, width='stretch')
-    elif fallback and fallback and os.path.exists(fallback):
+    elif fallback and os.path.exists(fallback):
         st.image(fallback, width='stretch')
 
 def _fmt_usd(x):
@@ -50,7 +50,7 @@ def _y_range(series, pad=1.0, lo=0.0):
     vmax = float(s.max())
     return [max(lo, vmin - pad), vmax + pad]
 
-def _make_series_fig(hist, j, dfp, y_col, title, y_title, y_range=None, y_tickprefix=None):
+def _make_series_fig(hist, j, y_col, title, y_title, y_range=None, y_tickprefix=None):
     fig = go.Figure()
 
     # SOLID up to contract BEFORE selected (0..j-1)
@@ -70,14 +70,15 @@ def _make_series_fig(hist, j, dfp, y_col, title, y_title, y_range=None, y_tickpr
 
     # DOTTED only for last segment (j-1 -> j)
     if j >= 1:
-        seg = hist.iloc[j - 1: j + 1]
+        seg = hist.iloc[j - 1: j + 1]  # exactly 2 points
         fig.add_trace(
             go.Scatter(
                 x=seg['contract_n'],
                 y=seg[y_col],
                 mode='lines+markers',
                 line=dict(dash='dot', width=3),
-                marker=dict(size=7),
+                # Hide the marker at j-1 so it stays the light color from hist_pre
+                marker=dict(size=[0, 7]),
                 hoverinfo='skip',
                 showlegend=False,
             )
@@ -224,33 +225,16 @@ if not df_pos.empty:
 d_likely_term = float(likely_term) - float(curr_term) if (pd.notna(likely_term) and pd.notna(curr_term)) else float('nan')
 d_likely_aav  = float(likely_aav)  - float(curr_aav)  if (pd.notna(likely_aav)  and pd.notna(curr_aav))  else float('nan')
 
-# ---------------- TOP ROW: HEADSHOT + METRICS (NO TOTAL VALUE) ---------------- #
-c_hs, c_m1, c_m2, c_m3, c_m4 = st.columns([0.75, 1, 1, 1, 1], gap='medium', vertical_alignment='center')
+# ---------------- TOP ROW: HEADSHOT + METRICS (LIKELY FIRST, THEN IDEAL) ---------------- #
+c_hs, c_m1, c_m2, c_m3, c_m4 = st.columns([0.75, 1, 1, 1, 1], gap='small', vertical_alignment='center')
 
 with c_hs:
     with st.container(border=True):
         headshot_path = f'assets/headshots/{int(player_id)}.png'
         _img(headshot_path, fallback='assets/headshots/default.png')
 
+# Likely first
 with c_m1:
-    with st.container(border=True):
-        st.metric(
-            'Ideal Term',
-            value=('N/A' if pd.isna(ideal_term) else f'{float(ideal_term):.1f} yrs'),
-            delta=_fmt_delta_term(d_ideal_term),
-            delta_color='normal',
-        )
-
-with c_m2:
-    with st.container(border=True):
-        st.metric(
-            'Ideal AAV',
-            value=_fmt_usd(ideal_aav),
-            delta=_fmt_delta_usd(d_ideal_aav),
-            delta_color='normal',
-        )
-
-with c_m3:
     with st.container(border=True):
         st.metric(
             'Likely Term',
@@ -259,7 +243,7 @@ with c_m3:
             delta_color='normal',
         )
 
-with c_m4:
+with c_m2:
     with st.container(border=True):
         st.metric(
             'Likely AAV',
@@ -268,45 +252,30 @@ with c_m4:
             delta_color='normal',
         )
 
-# ------------------------ TERM + AAV OVER CAREER (SIDE BY SIDE) ------------------------ #
-term_range = _y_range(hist['term'], pad=1.0, lo=0.0)
-aav_range  = _y_range(hist['AAV'],  pad=1_000_000.0, lo=0.0)
+# Ideal second
+with c_m3:
+    with st.container(border=True):
+        st.metric(
+            'Ideal Term',
+            value=('N/A' if pd.isna(ideal_term) else f'{float(ideal_term):.1f} yrs'),
+            delta=_fmt_delta_term(d_ideal_term),
+            delta_color='normal',
+        )
 
-fig_term = _make_series_fig(
-    hist=hist, j=j, dfp=dfp,
-    y_col='term',
-    title='Term Projection',
-    y_title='Term (years)',
-    y_range=term_range,
-)
+with c_m4:
+    with st.container(border=True):
+        st.metric(
+            'Ideal AAV',
+            value=_fmt_usd(ideal_aav),
+            delta=_fmt_delta_usd(d_ideal_aav),
+            delta_color='normal',
+        )
 
-fig_aav = _make_series_fig(
-    hist=hist, j=j, dfp=dfp,
-    y_col='AAV',
-    title='Salary Projection',
-    y_title='AAV',
-    y_range=aav_range,
-    y_tickprefix='$',
-)
+# ------------------------ 1 ROW OF 3 PLOTS ------------------------ #
+c1, c2, c3 = st.columns(3, gap='small', vertical_alignment='top')
 
-c_left, c_right = st.columns(2, gap='large', vertical_alignment='top')
-with c_left:
-    # Disable zoom.
-    fig_term.update_xaxes(fixedrange=True)
-    fig_term.update_yaxes(fixedrange=True)
-
-    st.plotly_chart(fig_term, width='stretch')
-with c_right:
-    # Disable zoom.
-    fig_aav.update_xaxes(fixedrange=True)
-    fig_aav.update_yaxes(fixedrange=True)
-    st.plotly_chart(fig_aav, width='stretch')
-
-# ------------------------ POSSIBILITIES + LEAGUE SCATTER (SAME ROW) ------------------------ #
-c_poss, c_scatter = st.columns(2, gap='large', vertical_alignment='top')
-
-# ----- LEFT: CONTRACT POSSIBILITIES ----- #
-with c_poss:
+# ----- (1) CONTRACT POSSIBILITIES ----- #
+with c1:
     df_pos = poss.loc[poss['playerId'] == int(player_id)].copy()
     if df_pos.empty:
         st.info('No contract possibility data available for this player.')
@@ -364,10 +333,89 @@ with c_poss:
         fig_poss.update_xaxes(fixedrange=True)
         fig_poss.update_yaxes(fixedrange=True)
 
-        st.plotly_chart(fig_poss, width='stretch')
+        st.plotly_chart(fig_poss, width='stretch', config={"displayModeBar": True})
 
-# ----- RIGHT: SEASON SCATTER (startSeason == season) ----- #
-with c_scatter:
+# ----- (2) TERM + SALARY PROJECTION COMBINED (DUAL AXIS + LEGEND + HOVER) ----- #
+with c2:
+    term_range = _y_range(hist['term'], pad=1.0, lo=0.0)
+    aav_range  = _y_range(hist['AAV'],  pad=1_000_000.0, lo=0.0)
+
+    fig_combo = go.Figure()
+
+    # --- TERM traces (primary y) ---
+    fig_term_part = _make_series_fig(
+        hist=hist, j=j,
+        y_col='term',
+        title='',
+        y_title='Term (years)',
+        y_range=term_range,
+    )
+    for k, tr in enumerate(fig_term_part.data):
+        tr.update(
+            yaxis='y',
+            name='Term',
+            showlegend=(k == 0),  # legend once
+            hovertemplate="Contract: %{x:.0f}<br>Term: %{y:.1f} yrs<extra></extra>",
+        )
+        fig_combo.add_trace(tr)
+
+    # --- AAV traces (secondary y) ---
+    fig_aav_part = _make_series_fig(
+        hist=hist, j=j,
+        y_col='AAV',
+        title='',
+        y_title='AAV',
+        y_range=aav_range,
+        y_tickprefix='$',
+    )
+    for k, tr in enumerate(fig_aav_part.data):
+        tr.update(
+            yaxis='y2',
+            name='AAV',
+            showlegend=(k == 0),  # legend once
+            hovertemplate="Contract: %{x:.0f}<br>AAV: $%{y:,.0f}<extra></extra>",
+        )
+        fig_combo.add_trace(tr)
+
+    fig_combo.update_layout(
+        title='Contract Projection',
+        xaxis=dict(
+            title='Contract #',
+            tickmode='linear',
+            dtick=1,
+            range=[0.5, float(hist['contract_n'].max()) + 0.5],
+        ),
+        yaxis=dict(
+            title='Term (years)',
+            range=term_range,
+        ),
+        yaxis2=dict(
+            title='AAV',
+            range=aav_range,
+            overlaying='y',
+            side='right',
+            tickprefix='$',
+        ),
+        legend=dict(
+            orientation='h',
+            x=0.5,
+            xanchor='center',
+            y=-0.18,      # below the plot area
+            yanchor='top',
+        ),
+        margin=dict(l=10, r=10, t=60, b=80),
+        hovermode='x unified',
+    )
+
+    # Disable zoom.
+    fig_combo.update_xaxes(fixedrange=True)
+    fig_combo.update_yaxes(fixedrange=True)                # primary y
+    fig_combo.update_layout(yaxis2=dict(fixedrange=True))  # secondary y
+
+    st.plotly_chart(fig_combo, width='stretch', config={"displayModeBar": True})
+
+# ----- (3) vs. OTHER FREE AGENTS (SCATTER) ----- #
+with c3:
     season_str = str(season)
 
     cp_season = cp.copy()
@@ -387,6 +435,7 @@ with c_scatter:
 
         fig_sc = go.Figure()
 
+        # Others (gray circles)
         fig_sc.add_trace(
             go.Scatter(
                 x=others['term'],
@@ -396,19 +445,26 @@ with c_scatter:
                     size=7,
                     opacity=0.55,
                     color='rgba(160,160,160,0.65)',
+                    symbol='circle',
                 ),
                 hovertemplate="Term: %{x:.1f} yrs<br>AAV: $%{y:,.0f}<extra></extra>",
                 showlegend=False,
             )
         )
 
+        # Selected player (orange star)
         if not mine.empty:
             fig_sc.add_trace(
                 go.Scatter(
                     x=mine['term'],
                     y=mine['AAV'],
                     mode='markers',
-                    marker=dict(size=16, opacity=0.8),
+                    marker=dict(
+                        size=14,
+                        opacity=1,
+                        symbol='star',
+                        color='yellow',
+                    ),
                     hovertemplate="Term: %{x:.1f} yrs<br>AAV: $%{y:,.0f}<extra></extra>",
                     showlegend=False,
                 )
@@ -425,8 +481,4 @@ with c_scatter:
         fig_sc.update_xaxes(fixedrange=True)
         fig_sc.update_yaxes(fixedrange=True)
 
-        st.plotly_chart(
-            fig_sc, 
-            width='stretch', 
-            config={"displayModeBar": True}
-        )
+        st.plotly_chart(fig_sc, width='stretch', config={"displayModeBar": True})

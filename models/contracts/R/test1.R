@@ -81,7 +81,7 @@ contracts <- fa_base %>%
     cap         = cap_SEASON,
     prevTerm    = term,
     prevAAV     = AAV,
-    age         = age + ((SEASON - startSeason) / 10001),
+    age         = age + term,
     position,
     height,
     weight,
