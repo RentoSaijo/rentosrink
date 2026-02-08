@@ -671,4 +671,4 @@ readr::write_csv(goalie_shot_analysis, paste0(
   SEASON,
   '.csv'
 ))
-rm(SEASON, PLAYOFFS_PRESENT, na_playoff_cols_if_absent, EMPTY_PATH, EMPTY_VERSION, goalie_keep_cols, i_prefix, oa_prefix, of_prefix, SHOOTOUT_PATH, SHOOTOUT_VERSION, skater_keep_cols, SPECIAL_PATH, SPECIAL_VERSION, STANDARD_PATH, STANDARD_VERSION, load_model_bundle, make_std_all_cols, predict_xg_bundle, `%||%`)
+rm(PLAYOFFS_PRESENT, na_playoff_cols_if_absent, EMPTY_PATH, EMPTY_VERSION, goalie_keep_cols, i_prefix, oa_prefix, of_prefix, SHOOTOUT_PATH, SHOOTOUT_VERSION, skater_keep_cols, SPECIAL_PATH, SPECIAL_VERSION, STANDARD_PATH, STANDARD_VERSION, load_model_bundle, make_std_all_cols, predict_xg_bundle, `%||%`)
