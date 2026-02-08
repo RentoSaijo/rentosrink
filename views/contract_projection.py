@@ -5,12 +5,12 @@ import pandas as pd
 import plotly.graph_objects as go
 from utils import load_biographies, load_contract_projection, load_contract_possibility
 
-# ------------------------ CONFIG ------------------------ #
-# Hardcode season (only 2026-27).
+# Set constants.
 SEASON_LABELS  = {'2026-2027': '20262027'}
 SEASON_OPTIONS = list(SEASON_LABELS.keys())
+PLOT_H = 400
 
-# ------------------------ HELPERS ------------------------ #
+# Helpers.
 def _img(path, fallback=None):
     if path and os.path.exists(path):
         st.image(path, width='stretch')
@@ -53,7 +53,6 @@ def _y_range(series, pad=1.0, lo=0.0):
 def _make_series_fig(hist, j, y_col, title, y_title, y_range=None, y_tickprefix=None):
     fig = go.Figure()
 
-    # SOLID up to contract BEFORE selected (0..j-1)
     hist_pre = hist.iloc[:j].copy() if j >= 1 else hist.iloc[:0].copy()
     if not hist_pre.empty:
         fig.add_trace(
@@ -68,16 +67,14 @@ def _make_series_fig(hist, j, y_col, title, y_title, y_range=None, y_tickprefix=
             )
         )
 
-    # DOTTED only for last segment (j-1 -> j)
     if j >= 1:
-        seg = hist.iloc[j - 1: j + 1]  # exactly 2 points
+        seg = hist.iloc[j - 1: j + 1]
         fig.add_trace(
             go.Scatter(
                 x=seg['contract_n'],
                 y=seg[y_col],
                 mode='lines+markers',
                 line=dict(dash='dot', width=3),
-                # Hide the marker at j-1 so it stays the light color from hist_pre
                 marker=dict(size=[0, 7]),
                 hoverinfo='skip',
                 showlegend=False,
@@ -113,10 +110,10 @@ def _make_series_fig(hist, j, y_col, title, y_title, y_range=None, y_tickprefix=
     )
     return fig
 
-# ------------------------ DATA LOAD ------------------------ #
+# Load biographies.
 bio = load_biographies()
 
-# ------------------------ SELECTION MENU ------------------------ #
+# Set filters.
 c_season, c_player = st.columns(2, gap='small', vertical_alignment='top')
 
 with c_season:
@@ -148,17 +145,15 @@ with c_player:
 
 player_id = name_to_id.get(player_name)
 
-# ------------------------ PLAYER CONTRACT ROW (selected season) ------------------------ #
 if player_id is None:
     st.info('Select a player.')
     st.stop()
 
-# Player history in projection table
+# Player history in projection table.
 dfp = cp.loc[cp['playerId'] == int(player_id)].copy()
 dfp = dfp.sort_values(['age', 'startSeason']).reset_index(drop=True)
 dfp['contract_n'] = dfp.index + 1
 
-# Find the projected contract row for the selected season
 sel_idx = dfp.index[dfp['startSeason'].astype(str) == str(season)].tolist()
 if not sel_idx:
     st.info('No contract found for the selected season.')
@@ -170,24 +165,18 @@ if j < 1:
     st.stop()
 
 hist = dfp.iloc[: j + 1].copy()
-
-# Selected contract (ideal) and baseline = previous contract (current)
 sel  = hist.iloc[j]
 prev = hist.iloc[j - 1]
 
-# --- Ideal (from projection) ---
 ideal_term = pd.to_numeric(sel.get('term', float('nan')), errors='coerce')
 ideal_aav  = pd.to_numeric(sel.get('AAV',  float('nan')), errors='coerce')
 
-# Baseline ("current") = previous contract
 curr_term = pd.to_numeric(prev.get('term', float('nan')), errors='coerce')
 curr_aav  = pd.to_numeric(prev.get('AAV',  float('nan')), errors='coerce')
 
-# Deltas for ideal = ideal - current (previous contract)
 d_ideal_term = float(ideal_term) - float(curr_term) if (pd.notna(ideal_term) and pd.notna(curr_term)) else float('nan')
 d_ideal_aav  = float(ideal_aav)  - float(curr_aav)  if (pd.notna(ideal_aav)  and pd.notna(curr_aav))  else float('nan')
 
-# --- Likely (from possibilities, most likely term) ---
 poss = load_contract_possibility(season)
 df_pos = poss.loc[poss['playerId'] == int(player_id)].copy()
 
@@ -209,23 +198,20 @@ if not df_pos.empty:
     dp['prob'] = pd.to_numeric(dp['prob'], errors='coerce')
     dp['aav']  = pd.to_numeric(dp['aav'],  errors='coerce')
 
-    # Normalize prob if 0..100
     pmax = dp['prob'].max(skipna=True)
     if pd.notna(pmax) and pmax > 1.0:
         dp['prob'] = dp['prob'] / 100.0
 
-    # pick most likely term (require prob)
     dp2 = dp.dropna(subset=['prob']).copy()
     if not dp2.empty:
         t_star = int(dp2.loc[dp2['prob'].idxmax(), 'term'])
         likely_term = float(t_star)
         likely_aav  = float(pd.to_numeric(row.get(f'xAAV_{t_star}', float('nan')), errors='coerce'))
 
-# Likely deltas = likely - current (NOT likely - ideal)
 d_likely_term = float(likely_term) - float(curr_term) if (pd.notna(likely_term) and pd.notna(curr_term)) else float('nan')
 d_likely_aav  = float(likely_aav)  - float(curr_aav)  if (pd.notna(likely_aav)  and pd.notna(curr_aav))  else float('nan')
 
-# ---------------- TOP ROW: HEADSHOT + METRICS (LIKELY FIRST, THEN IDEAL) ---------------- #
+# Create row with headshot + metrics.
 c_hs, c_m1, c_m2, c_m3, c_m4 = st.columns([0.75, 1, 1, 1, 1], gap='small', vertical_alignment='center')
 
 with c_hs:
@@ -233,7 +219,6 @@ with c_hs:
         headshot_path = f'assets/headshots/{int(player_id)}.png'
         _img(headshot_path, fallback='assets/headshots/default.png')
 
-# Likely first
 with c_m1:
     with st.container(border=True):
         st.metric(
@@ -252,7 +237,6 @@ with c_m2:
             delta_color='normal',
         )
 
-# Ideal second
 with c_m3:
     with st.container(border=True):
         st.metric(
@@ -271,10 +255,9 @@ with c_m4:
             delta_color='normal',
         )
 
-# ------------------------ 1 ROW OF 3 PLOTS ------------------------ #
+# Create plots.
 c1, c2, c3 = st.columns(3, gap='small', vertical_alignment='top')
 
-# ----- (1) CONTRACT POSSIBILITIES ----- #
 with c1:
     df_pos = poss.loc[poss['playerId'] == int(player_id)].copy()
     if df_pos.empty:
@@ -292,19 +275,15 @@ with c1:
         dp['aav']  = pd.to_numeric(dp['aav'], errors='coerce')
         dp['prob'] = pd.to_numeric(dp['prob'], errors='coerce')
 
-        # normalize prob if needed
         pmax = dp['prob'].max(skipna=True)
         if pd.notna(pmax) and pmax > 1.0:
             dp['prob'] = dp['prob'] / 100.0
 
         dp['prob_clamped'] = dp['prob'].clip(lower=0.0, upper=1.0).fillna(0.0)
-        dp['msize'] = 10 + 30 * dp['prob_clamped']  # 10..40 px
+        dp['msize'] = 10 + 30 * dp['prob_clamped']
         dp_plot = dp.dropna(subset=['aav']).copy()
 
-        # Text labels (probability shown on the chart)
-        dp_plot['prob_txt'] = dp_plot['prob_clamped'].apply(
-            lambda p: '' if pd.isna(p) else f'{p:.0%}'
-        )
+        dp_plot['prob_txt'] = dp_plot['prob_clamped'].apply(lambda p: '' if pd.isna(p) else f'{p:.0%}')
 
         fig_poss = go.Figure(
             go.Scatter(
@@ -323,26 +302,24 @@ with c1:
         )
 
         fig_poss.update_layout(
-            title='Contract Possibilities',
+            title=dict(text='Contract Possibilities', x=0.5, xanchor='center'),
             margin=dict(l=10, r=10, t=50, b=10),
             xaxis=dict(title='Term (years)', tickmode='linear', dtick=1, range=[0.5, 8.5]),
             yaxis=dict(title='Projected AAV', tickprefix='$'),
+            height=PLOT_H,
         )
 
-        # Disable zoom.
         fig_poss.update_xaxes(fixedrange=True)
         fig_poss.update_yaxes(fixedrange=True)
 
-        st.plotly_chart(fig_poss, width='stretch', config={"displayModeBar": True})
+        st.plotly_chart(fig_poss, width='stretch', config={'displayModeBar': True})
 
-# ----- (2) TERM + SALARY PROJECTION COMBINED (DUAL AXIS + LEGEND + HOVER) ----- #
 with c2:
     term_range = _y_range(hist['term'], pad=1.0, lo=0.0)
     aav_range  = _y_range(hist['AAV'],  pad=1_000_000.0, lo=0.0)
 
     fig_combo = go.Figure()
 
-    # --- TERM traces (primary y) ---
     fig_term_part = _make_series_fig(
         hist=hist, j=j,
         y_col='term',
@@ -354,12 +331,11 @@ with c2:
         tr.update(
             yaxis='y',
             name='Term',
-            showlegend=(k == 0),  # legend once
+            showlegend=(k == 0),
             hovertemplate="Contract: %{x:.0f}<br>Term: %{y:.1f} yrs<extra></extra>",
         )
         fig_combo.add_trace(tr)
 
-    # --- AAV traces (secondary y) ---
     fig_aav_part = _make_series_fig(
         hist=hist, j=j,
         y_col='AAV',
@@ -372,13 +348,13 @@ with c2:
         tr.update(
             yaxis='y2',
             name='AAV',
-            showlegend=(k == 0),  # legend once
+            showlegend=(k == 0),
             hovertemplate="Contract: %{x:.0f}<br>AAV: $%{y:,.0f}<extra></extra>",
         )
         fig_combo.add_trace(tr)
 
     fig_combo.update_layout(
-        title='Contract Projection',
+        title=dict(text='Contract Projection', x=0.5, xanchor='center'),
         xaxis=dict(
             title='Contract #',
             tickmode='linear',
@@ -400,21 +376,20 @@ with c2:
             orientation='h',
             x=0.5,
             xanchor='center',
-            y=-0.18,      # below the plot area
+            y=-0.18,
             yanchor='top',
         ),
         margin=dict(l=10, r=10, t=60, b=80),
         hovermode='x unified',
+        height=PLOT_H,
     )
 
-    # Disable zoom.
     fig_combo.update_xaxes(fixedrange=True)
-    fig_combo.update_yaxes(fixedrange=True)                # primary y
-    fig_combo.update_layout(yaxis2=dict(fixedrange=True))  # secondary y
+    fig_combo.update_yaxes(fixedrange=True)
+    fig_combo.update_layout(yaxis2=dict(fixedrange=True))
 
-    st.plotly_chart(fig_combo, width='stretch', config={"displayModeBar": True})
+    st.plotly_chart(fig_combo, width='stretch', config={'displayModeBar': True})
 
-# ----- (3) vs. OTHER FREE AGENTS (SCATTER) ----- #
 with c3:
     season_str = str(season)
 
@@ -435,7 +410,6 @@ with c3:
 
         fig_sc = go.Figure()
 
-        # Others (gray circles)
         fig_sc.add_trace(
             go.Scatter(
                 x=others['term'],
@@ -452,7 +426,6 @@ with c3:
             )
         )
 
-        # Selected player (orange star)
         if not mine.empty:
             fig_sc.add_trace(
                 go.Scatter(
@@ -471,14 +444,15 @@ with c3:
             )
 
         fig_sc.update_layout(
-            title='vs. Other Free Agents',
+            title=dict(text='vs. Other Free Agents', x=0.5, xanchor='center'),
             margin=dict(l=10, r=10, t=50, b=10),
             xaxis=dict(title='Projected Term (years)'),
             yaxis=dict(title='Projected AAV', tickprefix='$'),
+            height=PLOT_H,
         )
 
-        # Disable zoom.
         fig_sc.update_xaxes(fixedrange=True)
         fig_sc.update_yaxes(fixedrange=True)
 
-        st.plotly_chart(fig_sc, width='stretch', config={"displayModeBar": True})
+        st.plotly_chart(fig_sc, width='stretch', config={'displayModeBar': True})
+        
