@@ -4,7 +4,7 @@ suppressMessages(library(stringr))
 suppressMessages(library(nhlscraper))
 
 # Define constants.
-START_SEASON <- 20212022
+START_SEASON <- 20112012
 END_SEASON   <- 20252026
 
 # Get season IDs.
@@ -16,7 +16,7 @@ rm(start_year, end_year, years, START_SEASON, END_SEASON)
 
 # Get player IDs.
 playerIds <- c()
-gameTypeIds <- 2 : 3
+gameTypeIds <- 2:3
 for (seasonId in seasonIds) {
   for (gameTypeId in gameTypeIds) {
     playerIds <- append(playerIds, nhlscraper::skater_season_report(
@@ -32,28 +32,20 @@ rm(gameTypeId, gameTypeIds, seasonId, seasonIds)
 
 # Get biographies.
 biographies <- nhlscraper::players() %>% 
-  filter(id %in% playerIds) %>% 
-  mutate(
-    playerId = id,
-    hand     = shootsCatches,
-    position = case_when(
-      centralRegistryPosition == 'C' ~ 'CR',
-      centralRegistryPosition == 'L' ~ 'LW',
-      centralRegistryPosition == 'R' ~ 'RW',
-      centralRegistryPosition == 'D' ~ 'DF',
-      centralRegistryPosition == 'G' ~ 'GT',
-      TRUE                           ~ NA_character_
-    ),
+  dplyr::filter(playerId %in% playerIds) %>% 
+  dplyr::mutate(
+    handCode = shootsCatches,
+    positionCode,
     number   = sweaterNumber,
     teamId   = lastNHLTeamId
   ) %>% 
-  group_by(fullName) %>%
-  arrange(playerId, .by_group = TRUE) %>%
-  mutate(menuName = if (n() == 1) fullName else str_c(
-    fullName, ' ', row_number()
+  dplyr::group_by(fullName) %>%
+  dplyr::arrange(playerId, .by_group = TRUE) %>%
+  dplyr::mutate(menuName = if (n() == 1) fullName else stringr::str_c(
+    fullName, ' ', dplyr::row_number()
   )) %>%
-  ungroup() %>% 
-  select(
+  dplyr::ungroup() %>% 
+  dplyr::select(
     playerId,
     fullName,
     menuName,
@@ -61,12 +53,12 @@ biographies <- nhlscraper::players() %>%
     birthDate,
     height,
     weight,
-    hand,
-    position,
+    handCode,
+    positionCode,
     number,
     teamId
   )
 rm(playerIds)
 
 # Write to CSV.
-write_csv(biographies, 'data/biographies.csv')
+readr::write_csv(biographies, 'data/biographies.csv')
