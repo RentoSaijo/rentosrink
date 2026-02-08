@@ -81,7 +81,7 @@ na_playoff_cols_if_absent <- function(df, playoffs_present) {
   df %>%
     dplyr::mutate(
       dplyr::across(
-        dplyr::matches('(^gP_3$|^mP_3$|^(d|a)_3$|_3_std$|_3_all$)'),
+        dplyr::matches('(^gP_3$|^mP_3$|^(x|y)_3$|^(x|y)_3_(std|all)$|_3_std$|_3_all$)'),
         \(x) { x[] <- NA; x }
       )
     )
@@ -194,6 +194,8 @@ shots <- pbps_xg %>%
     typeDescKey,
     situationCode,
     isShootout,
+    xCoordNorm,
+    yCoordNorm,
     # Predictors
     isHome,
     isPlayoff,
@@ -388,24 +390,45 @@ skater_shots <- shots_out %>%
   dplyr::filter(!is.na(playerId)) %>%
   dplyr::group_by(playerId) %>%
   dplyr::summarise(
-    d_2 = dplyr::if_else(
-      base::sum(!isPlayoff & !is.na(distance)) > 0,
-      base::mean(distance[!isPlayoff], na.rm = TRUE),
+    x_2_std = dplyr::if_else(
+      base::sum(!isPlayoff & isStd & !is.na(xCoordNorm)) > 0,
+      base::mean(xCoordNorm[!isPlayoff & isStd], na.rm = TRUE),
       NA_real_
     ),
-    a_2 = dplyr::if_else(
-      base::sum(!isPlayoff & !is.na(angle)) > 0,
-      base::mean(angle[!isPlayoff], na.rm = TRUE),
+    x_2_all = dplyr::if_else(
+      base::sum(!isPlayoff & !is.na(xCoordNorm)) > 0,
+      base::mean(xCoordNorm[!isPlayoff], na.rm = TRUE),
       NA_real_
     ),
-    d_3 = dplyr::if_else(
-      base::sum(isPlayoff & !is.na(distance)) > 0,
-      base::mean(distance[isPlayoff], na.rm = TRUE),
+    y_2_std = dplyr::if_else(
+      base::sum(!isPlayoff & isStd & !is.na(yCoordNorm)) > 0,
+      base::mean(yCoordNorm[!isPlayoff & isStd], na.rm = TRUE),
       NA_real_
     ),
-    a_3 = dplyr::if_else(
-      base::sum(isPlayoff & !is.na(angle)) > 0,
-      base::mean(angle[isPlayoff], na.rm = TRUE),
+    y_2_all = dplyr::if_else(
+      base::sum(!isPlayoff & !is.na(yCoordNorm)) > 0,
+      base::mean(yCoordNorm[!isPlayoff], na.rm = TRUE),
+      NA_real_
+    ),
+
+    x_3_std = dplyr::if_else(
+      base::sum(isPlayoff & isStd & !is.na(xCoordNorm)) > 0,
+      base::mean(xCoordNorm[isPlayoff & isStd], na.rm = TRUE),
+      NA_real_
+    ),
+    x_3_all = dplyr::if_else(
+      base::sum(isPlayoff & !is.na(xCoordNorm)) > 0,
+      base::mean(xCoordNorm[isPlayoff], na.rm = TRUE),
+      NA_real_
+    ),
+    y_3_std = dplyr::if_else(
+      base::sum(isPlayoff & isStd & !is.na(yCoordNorm)) > 0,
+      base::mean(yCoordNorm[isPlayoff & isStd], na.rm = TRUE),
+      NA_real_
+    ),
+    y_3_all = dplyr::if_else(
+      base::sum(isPlayoff & !is.na(yCoordNorm)) > 0,
+      base::mean(yCoordNorm[isPlayoff], na.rm = TRUE),
       NA_real_
     ),
     iCorsiF_2_std   = base::sum(dplyr::if_else(!isPlayoff & isStd, 1L, 0L), na.rm = TRUE),
@@ -521,24 +544,45 @@ goalie_shots <- shots_out %>%
   ) %>%
   dplyr::group_by(playerId) %>%
   dplyr::summarise(
-    d_2 = dplyr::if_else(
-      sum(!isPlayoff & !is.na(distance)) > 0,
-      mean(distance[!isPlayoff], na.rm = TRUE),
+    x_2_std = dplyr::if_else(
+      base::sum(!isPlayoff & isStd & !is.na(xCoordNorm)) > 0,
+      base::mean(xCoordNorm[!isPlayoff & isStd], na.rm = TRUE),
       NA_real_
     ),
-    a_2 = dplyr::if_else(
-      sum(!isPlayoff & !is.na(angle)) > 0,
-      mean(angle[!isPlayoff], na.rm = TRUE),
+    x_2_all = dplyr::if_else(
+      base::sum(!isPlayoff & !is.na(xCoordNorm)) > 0,
+      base::mean(xCoordNorm[!isPlayoff], na.rm = TRUE),
       NA_real_
     ),
-    d_3 = dplyr::if_else(
-      sum(isPlayoff & !is.na(distance)) > 0,
-      mean(distance[isPlayoff], na.rm = TRUE),
+    y_2_std = dplyr::if_else(
+      base::sum(!isPlayoff & isStd & !is.na(yCoordNorm)) > 0,
+      base::mean(yCoordNorm[!isPlayoff & isStd], na.rm = TRUE),
       NA_real_
     ),
-    a_3 = dplyr::if_else(
-      sum(isPlayoff & !is.na(angle)) > 0,
-      mean(angle[isPlayoff], na.rm = TRUE),
+    y_2_all = dplyr::if_else(
+      base::sum(!isPlayoff & !is.na(yCoordNorm)) > 0,
+      base::mean(yCoordNorm[!isPlayoff], na.rm = TRUE),
+      NA_real_
+    ),
+
+    x_3_std = dplyr::if_else(
+      base::sum(isPlayoff & isStd & !is.na(xCoordNorm)) > 0,
+      base::mean(xCoordNorm[isPlayoff & isStd], na.rm = TRUE),
+      NA_real_
+    ),
+    x_3_all = dplyr::if_else(
+      base::sum(isPlayoff & !is.na(xCoordNorm)) > 0,
+      base::mean(xCoordNorm[isPlayoff], na.rm = TRUE),
+      NA_real_
+    ),
+    y_3_std = dplyr::if_else(
+      base::sum(isPlayoff & isStd & !is.na(yCoordNorm)) > 0,
+      base::mean(yCoordNorm[isPlayoff & isStd], na.rm = TRUE),
+      NA_real_
+    ),
+    y_3_all = dplyr::if_else(
+      base::sum(isPlayoff & !is.na(yCoordNorm)) > 0,
+      base::mean(yCoordNorm[isPlayoff], na.rm = TRUE),
       NA_real_
     ),
     FenwickA_2_std = sum(dplyr::if_else(!isPlayoff & isStd & isFenwick, 1L, 0L), na.rm = TRUE),
@@ -591,7 +635,7 @@ skater_shot_analysis <- base::list(
     skater_season_summary_3$playerId
   )) %>%
   dplyr::mutate(
-    dplyr::across(!dplyr::matches('^(d|a)_[23]$'), ~ tidyr::replace_na(.x, 0))
+    dplyr::across(!dplyr::matches('^(x|y)_[23]_(std|all)$'), ~ tidyr::replace_na(.x, 0))
   )
 rm(skater_shots, skater_season_summary_2, skater_season_summary_3)
 
@@ -603,15 +647,19 @@ skater_keep_cols <- c(
   'playerId',
   'gP_2',
   'mP_2',
-  'd_2',
-  'a_2',
+  'x_2_std',
+  'x_2_all',
+  'y_2_std',
+  'y_2_all',
   make_std_all_cols(i_prefix,  '_2'),
   make_std_all_cols(of_prefix, '_2'),
   make_std_all_cols(oa_prefix, '_2'),
   'gP_3',
   'mP_3',
-  'd_3',
-  'a_3',
+  'x_3_std',
+  'x_3_all',
+  'y_3_std',
+  'y_3_all',
   make_std_all_cols(i_prefix,  '_3'),
   make_std_all_cols(of_prefix, '_3'),
   make_std_all_cols(oa_prefix, '_3')
@@ -631,20 +679,24 @@ goalie_shot_analysis <- base::list(
     goalie_season_summary_3$playerId
   )) %>%
   dplyr::mutate(
-    dplyr::across(!dplyr::matches('^(d|a)_[23]$'), ~ tidyr::replace_na(.x, 0))
+    dplyr::across(!dplyr::matches('^(x|y)_[23]_(std|all)$'), ~ tidyr::replace_na(.x, 0))
   )
 rm(goalie_shots, goalie_season_summary_2, goalie_season_summary_3)
 goalie_keep_cols <- c(
   'playerId',
   'gP_2',
   'mP_2',
-  'd_2',
-  'a_2',
+  'x_2_std',
+  'x_2_all',
+  'y_2_std',
+  'y_2_all',
   make_std_all_cols(c('FenwickA', 'SOGA', 'GA', 'xGA'), '_2'),
   'gP_3',
   'mP_3',
-  'd_3',
-  'a_3',
+  'x_3_std',
+  'x_3_all',
+  'y_3_std',
+  'y_3_all',
   make_std_all_cols(c('FenwickA', 'SOGA', 'GA', 'xGA'), '_3')
 )
 goalie_shot_analysis <- goalie_shot_analysis %>%
