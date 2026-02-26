@@ -35,11 +35,6 @@ expected_goals_page = st.Page(
     title = 'Expected Goal',
     icon  = ':material/model_training:'
 )
-contract_projection_page = st.Page(
-    page  = 'views/contract_projection.py',
-    title = 'Contract Projection',
-    icon  = ':material/model_training:'
-)
 skater_shot_analysis_page = st.Page(
     page  = 'views/skater_shot_analysis.py',
     title = 'Skater Shot Analysis',
@@ -56,6 +51,13 @@ skater_free_agents_page = st.Page(
     icon  = ':material/attach_money:',
     url_path = 'skater_free_agents'
 )
+skater_free_agents_legacy_page = st.Page(
+    page  = 'views/skater_free_agents.py',
+    title = 'Skater Free Agents',
+    icon  = ':material/attach_money:',
+    url_path = 'contract_projection'
+)
+
 
 # Register all routes (including legacy alias), then render custom sidebar links.
 pg = st.navigation(
@@ -66,8 +68,9 @@ pg = st.navigation(
             goalie_shot_analysis_page,
             skater_free_agents_page,
         ],
-        'Models': [expected_goals_page, contract_projection_page],
+        'Models': [expected_goals_page],
         'Articles': [example_article_page],
+        'Legacy': [skater_free_agents_legacy_page],
     },
     position='hidden',
 )
@@ -83,7 +86,6 @@ with st.sidebar:
 
     st.caption('Models')
     st.page_link(expected_goals_page, label='Expected Goal', icon=':material/model_training:')
-    st.page_link(contract_projection_page, label='Contract Projection', icon=':material/model_training:')
 
     st.caption('Articles')
     st.page_link(example_article_page, label='Example Article', icon=':material/article:')
