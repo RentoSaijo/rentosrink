@@ -181,13 +181,27 @@ def _fmt_years(x):
 def _fmt_delta_years(x):
     if x is None or pd.isna(x):
         return 'N/A'
-    return f'{float(x):+.1f} yrs'
+    return f'{float(x):+.0f} yrs'
 
 
 def _fmt_delta_num(x):
     if x is None or pd.isna(x):
         return 'N/A'
     return f'{float(x):+.0f}'
+
+
+def _fmt_pct(x):
+    if x is None or pd.isna(x):
+        return 'N/A'
+    pct = f'{100.0 * float(x):.2f}'.rstrip('0').rstrip('.')
+    return f'{pct}%'
+
+
+def _fmt_delta_pp(x):
+    if x is None or pd.isna(x):
+        return 'N/A'
+    pp = f'{100.0 * float(x):+.2f}'.rstrip('0').rstrip('.')
+    return f'{pp} pp'
 
 
 def _y_range(values, pad=1.0, lo=0.0):
@@ -410,9 +424,24 @@ if prev_start_year is not None and proj_start_year is not None:
     d_age = float(proj_start_year - prev_start_year)
 else:
     d_age = float(age_signing) - prev_age if (pd.notna(age_signing) and pd.notna(prev_age)) else float('nan')
-d_cap = float(league_cap) - prev_cap if (pd.notna(league_cap) and pd.notna(prev_cap)) else float('nan')
 d_term = float(likely_term) - prev_term if (pd.notna(likely_term) and pd.notna(prev_term)) else float('nan')
 d_aav = float(likely_aav) - prev_aav if (pd.notna(likely_aav) and pd.notna(prev_aav)) else float('nan')
+
+proj_aav_pct = (
+    float(likely_aav) / float(league_cap)
+    if (pd.notna(likely_aav) and pd.notna(league_cap) and float(league_cap) > 0)
+    else float('nan')
+)
+prev_aav_pct = (
+    float(prev_aav) / float(prev_cap)
+    if (pd.notna(prev_aav) and pd.notna(prev_cap) and float(prev_cap) > 0)
+    else float('nan')
+)
+d_aav_pct = (
+    float(proj_aav_pct) - float(prev_aav_pct)
+    if (pd.notna(proj_aav_pct) and pd.notna(prev_aav_pct))
+    else float('nan')
+)
 
 # Create row with headshot + metrics.
 c_hs, c_m1, c_m2, c_m3, c_m4 = st.columns([0.75, 1, 1, 1, 1], gap='small', vertical_alignment='center')
@@ -434,27 +463,27 @@ with c_m1:
 with c_m2:
     with st.container(border=True):
         st.metric(
-            'League Cap',
-            value=_fmt_usd_whole(league_cap),
-            delta=_fmt_delta_usd_whole(d_cap),
-            delta_color='normal',
-        )
-
-with c_m3:
-    with st.container(border=True):
-        st.metric(
             'Projected Term',
             value=('N/A' if pd.isna(likely_term) else f'{_fmt_years(likely_term)} yrs'),
             delta=_fmt_delta_years(d_term),
             delta_color='normal',
         )
 
-with c_m4:
+with c_m3:
     with st.container(border=True):
         st.metric(
             'Projected AAV',
             value=_fmt_usd(likely_aav),
             delta=_fmt_delta_usd(d_aav),
+            delta_color='normal',
+        )
+
+with c_m4:
+    with st.container(border=True):
+        st.metric(
+            'Projected AAV %',
+            value=_fmt_pct(proj_aav_pct),
+            delta=_fmt_delta_pp(d_aav_pct),
             delta_color='normal',
         )
 
@@ -492,7 +521,12 @@ with c1:
             fig_poss.update_layout(
                 title=dict(text='Contract Possibilities', x=0.5, xanchor='center'),
                 margin=dict(l=10, r=10, t=50, b=10),
-                xaxis=dict(title='Term (years)', tickmode='linear', dtick=1),
+                xaxis=dict(
+                    title='Term (years)',
+                    tickmode='linear',
+                    dtick=1,
+                    range=[0.5, float(dp_plot['term'].max()) + 0.5],
+                ),
                 yaxis=dict(title='Projected AAV', tickprefix='$'),
                 height=PLOT_H,
             )
