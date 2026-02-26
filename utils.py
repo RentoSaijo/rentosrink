@@ -16,6 +16,14 @@ def load_contract_possibility(season = 20262027):
     return pd.read_csv(f'data/contract_possibility_{season}.csv')
 
 @st.cache_data
+def load_skater_contracts():
+    return pd.read_csv('data/skater_contracts.csv')
+
+@st.cache_data
+def load_skater_free_agents(path = 'data/skater_free_agents.csv'):
+    return pd.read_csv(path)
+
+@st.cache_data
 def load_skater_shot_analysis(season = 20242025):
     return pd.read_csv(f'data/skater_shot_analysis_{season}.csv')
 

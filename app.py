@@ -6,6 +6,17 @@ st.logo(image = 'assets/Letter.png', size = 'large')
 
 # Set default.
 st.set_page_config(layout = 'wide')
+st.markdown(
+    '''
+    <style>
+    div.block-container {
+        padding-top: 3rem;
+        padding-bottom: 3rem;
+    }
+    </style>
+    ''',
+    unsafe_allow_html=True,
+)
 
 # Set up pages.
 home_page = st.Page(
@@ -24,17 +35,40 @@ goalie_shot_analysis_page = st.Page(
     title = 'Goalie Shot Analysis',
     icon  = ':material/readiness_score:'
 )
-contract_projection_page = st.Page(
-    page  = 'views/contract_projection.py',
-    title = 'Contract Projection',
-    icon  = ':material/attach_money:'
+skater_free_agents_page = st.Page(
+    page  = 'views/skater_free_agents.py',
+    title = 'Skater Free Agents',
+    icon  = ':material/attach_money:',
+    url_path = 'skater_free_agents'
+)
+skater_free_agents_legacy_page = st.Page(
+    page  = 'views/skater_free_agents.py',
+    title = 'Skater Free Agents',
+    icon  = ':material/attach_money:',
+    url_path = 'contract_projection'
 )
 
-# Set up navigation.
+# Register all routes (including legacy alias), then render custom sidebar links.
 pg = st.navigation(
     {
         'About': [home_page],
-        'Models': [skater_shot_analysis_page, goalie_shot_analysis_page, contract_projection_page]
-    }
+        'Visualizations': [
+            skater_shot_analysis_page,
+            goalie_shot_analysis_page,
+            skater_free_agents_page,
+        ],
+        'Legacy': [skater_free_agents_legacy_page],
+    },
+    position='hidden',
 )
+
+with st.sidebar:
+    st.caption('About')
+    st.page_link(home_page, label='Rento\'s Rink', icon=':material/home:')
+
+    st.caption('Visualizations')
+    st.page_link(skater_shot_analysis_page, label='Skater Shot Analysis', icon=':material/readiness_score:')
+    st.page_link(goalie_shot_analysis_page, label='Goalie Shot Analysis', icon=':material/readiness_score:')
+    st.page_link(skater_free_agents_page, label='Skater Free Agents', icon=':material/attach_money:')
+
 pg.run()

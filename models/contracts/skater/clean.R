@@ -21,7 +21,7 @@ contracts <- nhlscraper::contracts() %>%
     prevAAV = lag(aav)
   ) %>%
   dplyr::ungroup() %>%
-  dplyr::filter(!is.na(ageAtSigning) & !is.na(aav) & startSeasonId >= 20132014)
+  dplyr::filter(!is.na(ageAtSigning) & !is.na(aav))
 
 # Create data.frame of salary caps.
 caps <- tibble::tibble(
@@ -186,6 +186,56 @@ contracts_train <- contracts_train %>%
   dplyr::select(-contractRowId, -lastPlayedTeamId) %>% 
   dplyr::filter(!is.na(isResign))
 
+# Build clean contract-level output for project scope data directory.
+contracts_clean <- contracts %>%
+  dplyr::left_join(
+    caps %>% dplyr::transmute(startSeasonId = as.integer(season), cap = cap),
+    by = 'startSeasonId',
+    relationship = 'many-to-one'
+  ) %>%
+  dplyr::left_join(
+    bios %>% dplyr::select(playerId, positionCode),
+    by = 'playerId',
+    relationship = 'many-to-one'
+  ) %>%
+  dplyr::filter(positionCode != 'G' & !is.na(term) & !is.na(aav))
+last_team_before_contract_clean <- contracts_clean %>%
+  dplyr::mutate(contractRowId = dplyr::row_number()) %>%
+  dplyr::select(contractRowId, playerId, startSeasonId) %>%
+  dplyr::left_join(sss_last_team, by = 'playerId', relationship = 'many-to-many') %>%
+  dplyr::filter(seasonId < startSeasonId) %>%
+  dplyr::mutate(gameTypePriority = dplyr::if_else(gameTypeId == 3L, 1L, 2L)) %>%
+  dplyr::arrange(contractRowId, dplyr::desc(seasonId), gameTypePriority) %>%
+  dplyr::group_by(contractRowId) %>%
+  dplyr::slice_head(n = 1) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(contractRowId, lastPlayedTeamId)
+contracts_clean <- contracts_clean %>%
+  dplyr::mutate(contractRowId = dplyr::row_number()) %>%
+  dplyr::left_join(last_team_before_contract_clean, by = 'contractRowId', relationship = 'one-to-one') %>%
+  dplyr::mutate(
+    isResign = dplyr::if_else(
+      isFirst,
+      FALSE,
+      signedWithTeamId == lastPlayedTeamId,
+      missing = FALSE
+    )
+  ) %>%
+  dplyr::transmute(
+    playerId,
+    number = contractNumber,
+    teamId = signedWithTeamId,
+    seasonId_start = startSeasonId,
+    seasonId_end = endSeasonId,
+    first = isFirst,
+    last = isLast,
+    resign = dplyr::coalesce(isResign, FALSE),
+    cap,
+    age = ageAtSigning,
+    term,
+    aav
+  )
+
 # Add basic and advanced statistics.
 situations <- c('ev', 'pp', 'sh')
 basic_stat_cols <- list(
@@ -312,7 +362,7 @@ contracts_train <- contracts_train %>%
 
 # ----- Create Testing Set ----- #
 
-age_ref_date <- as.Date(sprintf('%d-10-01', (END_SEASON_ID %% 1e4) + 1L))
+age_ref_date <- as.Date(sprintf('%d-09-15', (END_SEASON_ID %% 1e4) + 1L))
 last_contracts <- contracts %>%
   dplyr::filter(isLast & endSeasonId == END_SEASON_ID) %>%
   dplyr::left_join(
@@ -347,10 +397,14 @@ contracts_test <- last_contracts %>%
   dplyr::filter(positionCode != 'G') %>%
   dplyr::mutate(
     ageAtSigning = floor(as.numeric(difftime(age_ref_date, as.Date(birthDate), units = 'days')) / 365.25),
-    term = NA_integer_,
     aavP = NA_real_
   ) %>%
-  tidyr::expand_grid(isResign = c(TRUE, FALSE)) %>%
+  tidyr::expand_grid(
+    tibble::tibble(
+      isResign = c(rep(TRUE, 8L), rep(FALSE, 7L)),
+      term = c(1L:8L, 1L:7L)
+    )
+  ) %>%
   dplyr::select(
     playerId,
     signedWithTeamId,
@@ -403,3 +457,4 @@ contracts_test <- contracts_test %>%
 # Write to CSV.
 readr::write_csv(contracts_train, 'models/contracts/data/skater_contracts_train.csv')
 readr::write_csv(contracts_test, 'models/contracts/data/skater_contracts_test.csv')
+readr::write_csv(contracts_clean, 'data/skater_contracts.csv')

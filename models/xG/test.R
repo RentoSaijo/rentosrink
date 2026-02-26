@@ -54,10 +54,10 @@ safe_skater_timeonice <- function(season, game_type) {
   out %>%
     dplyr::transmute(
       playerId,
-      !!paste0('mP_', game_type, '_ev')  := pull_numeric_or_na(out, 'evTimeOnIce'),
-      !!paste0('mP_', game_type, '_pp')  := pull_numeric_or_na(out, 'ppTimeOnIce'),
-      !!paste0('mP_', game_type, '_sh')  := pull_numeric_or_na(out, 'shTimeOnIce'),
-      !!paste0('mP_', game_type, '_all') := pull_numeric_or_na(out, 'timeOnIce')
+      !!paste0('mP_', game_type, '_ev')  := pull_numeric_or_na(out, 'evTimeOnIce') / 60,
+      !!paste0('mP_', game_type, '_pp')  := pull_numeric_or_na(out, 'ppTimeOnIce') / 60,
+      !!paste0('mP_', game_type, '_sh')  := pull_numeric_or_na(out, 'shTimeOnIce') / 60,
+      !!paste0('mP_', game_type, '_all') := pull_numeric_or_na(out, 'timeOnIce') / 60
     )
 }
 
