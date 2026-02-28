@@ -2,4 +2,4 @@
 import streamlit as st
 
 # Set placeholder.
-st.title('Articles coming soon...')
+st.title('Article coming soon...')

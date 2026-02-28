@@ -25,10 +25,11 @@ home_page = st.Page(
     icon  = ':material/home:',
     default = True
 )
-example_article_page = st.Page(
+xg_article_page = st.Page(
     page  = 'views/example_article.py',
-    title = 'Example Article',
-    icon  = ':material/article:'
+    title = 'xG Model Article',
+    icon  = ':material/article:',
+    url_path = 'xg_article'
 )
 expected_goals_page = st.Page(
     page  = 'views/expected_goal.py',
@@ -69,7 +70,7 @@ pg = st.navigation(
             skater_free_agents_page,
         ],
         'Models': [expected_goals_page],
-        'Articles': [example_article_page],
+        'Articles': [xg_article_page],
         'Legacy': [skater_free_agents_legacy_page],
     },
     position='hidden',
@@ -88,6 +89,6 @@ with st.sidebar:
     st.page_link(expected_goals_page, label='Expected Goal', icon=':material/model_training:')
 
     st.caption('Articles')
-    st.page_link(example_article_page, label='Example Article', icon=':material/article:')
+    st.page_link(xg_article_page, label='xG Model Article', icon=':material/article:')
 
 pg.run()
