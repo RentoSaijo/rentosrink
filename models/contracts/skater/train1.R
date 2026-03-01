@@ -29,7 +29,8 @@ RESPONSE_COLS <- c('term', 'aavP')
 TERM_OUT <- 'models/contracts/skater/term1.rds'
 AAVP_OUT <- 'models/contracts/skater/aavP1.rds'
 N_FOLDS <- 5L
-GRID_SIZE <- 15L
+TERM_GRID_SIZE <- 15L
+AAVP_GRID_SIZE <- 25L
 DETECTED_CORES <- as.integer(parallel::detectCores(logical = TRUE))
 if (is.na(DETECTED_CORES) || DETECTED_CORES < 1L) {
   DETECTED_CORES <- 1L
@@ -38,12 +39,18 @@ PARALLEL_WORKERS <- max(1L, DETECTED_CORES - 1L)
 
 # Register parallel backend for tune_grid().
 doParallel::registerDoParallel(cores = PARALLEL_WORKERS)
+on.exit(doParallel::stopImplicitCluster(), add = TRUE)
 message(sprintf(
   'Parallel workers registered: %s (detected cores: %s)',
   foreach::getDoParWorkers(),
   DETECTED_CORES
 ))
-message(sprintf('Tuning config: folds=%s, grid_size=%s', N_FOLDS, GRID_SIZE))
+message(sprintf(
+  'Tuning config: folds=%s, term_grid=%s, aavP_grid=%s',
+  N_FOLDS,
+  TERM_GRID_SIZE,
+  AAVP_GRID_SIZE
+))
 
 # ----- Helpers ----- #
 
@@ -67,61 +74,20 @@ get_mtry_max <- function(recipe_obj, data) {
   ncol(baked)
 }
 
-# Tune and fit XGBoost with k-fold CV.
-fit_tuned_xgb <- function(data, formula, mode, eval_metric, metrics, select_metric, strata_col = NULL) {
-  rec <- make_recipe(formula, data)
-  mtry_max <- get_mtry_max(rec, data)
-  spec <- parsnip::boost_tree(
-    mode = mode,
-    trees = tune::tune(),
-    tree_depth = tune::tune(),
-    min_n = tune::tune(),
-    loss_reduction = tune::tune(),
-    sample_size = tune::tune(),
-    mtry = tune::tune(),
-    learn_rate = tune::tune(),
-    stop_iter = 50
-  ) %>%
-    parsnip::set_engine('xgboost', eval_metric = eval_metric, nthread = 1)
-  wf <- workflows::workflow() %>%
-    workflows::add_recipe(rec) %>%
-    workflows::add_model(spec)
-  folds <- if (is.null(strata_col)) {
-    rsample::vfold_cv(data, v = N_FOLDS)
-  } else {
-    rsample::vfold_cv(data, v = N_FOLDS, strata = !!rlang::sym(strata_col))
+# Update dials parameter objects with version-safe dispatch.
+update_params <- function(param_set, ...) {
+  stats::update(param_set, ...)
+}
+
+# Build parameter grid with fallback for older dials versions.
+build_param_grid <- function(param_set, size) {
+  if ('grid_space_filling' %in% getNamespaceExports('dials')) {
+    return(dials::grid_space_filling(param_set, size = size))
   }
-  params <- hardhat::extract_parameter_set_dials(wf) %>%
-    update(
-      trees = dials::trees(c(300L, 3000L)),
-      tree_depth = dials::tree_depth(c(2L, 10L)),
-      min_n = dials::min_n(c(1L, 20L)),
-      loss_reduction = dials::loss_reduction(c(-10, 1)),
-      sample_size = dials::sample_prop(c(0.5, 1.0)),
-      mtry = dials::mtry(c(1L, mtry_max)),
-      learn_rate = dials::learn_rate(c(-4, -1))
-    )
-  grid <- dials::grid_space_filling(params, size = GRID_SIZE)
-  tune_res <- tune::tune_grid(
-    wf,
-    resamples = folds,
-    grid      = grid,
-    metrics   = metrics,
-    control   = tune::control_grid(
-      save_pred = TRUE,
-      verbose   = TRUE,
-      allow_par = TRUE,
-      parallel_over = 'everything'
-    )
-  )
-  best <- tune::select_best(tune_res, metric = select_metric)
-  final_wf  <- tune::finalize_workflow(wf, best)
-  final_fit <- parsnip::fit(final_wf, data = data)
-  list(
-    fit      = final_fit,
-    best     = best,
-    tune_res = tune_res
-  )
+  if ('grid_max_entropy' %in% getNamespaceExports('dials')) {
+    return(dials::grid_max_entropy(param_set, size = size))
+  }
+  dials::grid_latin_hypercube(param_set, size = size)
 }
 
 # Log selected tuning parameters.
@@ -134,27 +100,52 @@ print_best <- function(model_name, best_tbl) {
   message(sprintf('Best %s parameters: %s', model_name, paste(best_values, collapse = ', ')))
 }
 
-# Plot top feature importances from fitted XGBoost model.
-plot_importance <- function(fitted_wf, model_name, top_n = 25L) {
-  booster <- workflows::extract_fit_parsnip(fitted_wf)$fit
-  importance <- xgboost::xgb.importance(model = booster)
-  if (nrow(importance) == 0) {
+# Tune, select, and fit final workflow.
+tune_and_fit <- function(wf, folds, grid, metrics, select_metric, data) {
+  tune_res <- tune::tune_grid(
+    wf,
+    resamples = folds,
+    grid = grid,
+    metrics = metrics,
+    control = tune::control_grid(
+      save_pred = TRUE,
+      verbose = TRUE,
+      allow_par = TRUE,
+      parallel_over = 'resamples'
+    )
+  )
+  best <- tune::select_best(tune_res, metric = select_metric)
+  final_wf <- tune::finalize_workflow(wf, best)
+  final_fit <- parsnip::fit(final_wf, data = data)
+  list(best = best, fit = final_fit)
+}
+
+# Plot top feature importances from fitted random forest model.
+plot_rf_importance <- function(fitted_wf, model_name, top_n = 25L) {
+  rf_fit <- workflows::extract_fit_engine(fitted_wf)
+  importance <- rf_fit$variable.importance
+  if (is.null(importance) || length(importance) == 0L) {
     message(sprintf('No feature importance values found for %s model.', model_name))
     return(invisible(NULL))
   }
-  plot_data <- importance %>%
-    tibble::as_tibble() %>%
-    dplyr::arrange(dplyr::desc(Gain)) %>%
+
+  plot_data <- tibble::tibble(
+    Feature = names(importance),
+    Importance = as.numeric(importance)
+  ) %>%
+    dplyr::arrange(dplyr::desc(Importance)) %>%
     dplyr::slice_head(n = top_n) %>%
-    dplyr::mutate(Feature = forcats::fct_reorder(Feature, Gain))
-  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Gain, y = Feature)) +
+    dplyr::mutate(Feature = forcats::fct_reorder(Feature, Importance))
+
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Importance, y = Feature)) +
     ggplot2::geom_col(fill = '#2F6CA8') +
     ggplot2::labs(
-      title = sprintf('%s Model Feature Importance (Gain)', model_name),
-      x = 'Gain',
+      title = sprintf('%s Model Feature Importance', model_name),
+      x = 'Importance',
       y = NULL
     ) +
     ggplot2::theme_minimal(base_size = 12)
+
   print(p)
   invisible(p)
 }
@@ -164,41 +155,86 @@ plot_importance <- function(fitted_wf, model_name, top_n = 25L) {
 predictor_cols <- setdiff(names(contracts), c(ID_COLS, RESPONSE_COLS))
 
 contracts <- contracts %>%
-  dplyr::mutate(
-    term = as.integer(term)
-  )
+  dplyr::mutate(term = as.integer(term))
+
 term_data <- contracts %>%
   dplyr::select(dplyr::all_of(c(ID_COLS, predictor_cols, 'term'))) %>%
   dplyr::filter(!is.na(term)) %>%
   dplyr::mutate(term = factor(term, levels = 1:8))
+
 aavp_data <- contracts %>%
   dplyr::select(dplyr::all_of(c(ID_COLS, predictor_cols, 'term', 'aavP'))) %>%
   dplyr::filter(!is.na(term), !is.na(aavP))
 
-# ----- Train Term Model ----- #
+# ----- Train Term Model (Random Forest Classification) ----- #
 
-term_metrics <- yardstick::metric_set(yardstick::mn_log_loss, yardstick::accuracy)
-term_fit_obj <- fit_tuned_xgb(
-  data = term_data,
-  formula = term ~ .,
+term_recipe <- make_recipe(term ~ ., term_data)
+term_mtry_max <- get_mtry_max(term_recipe, term_data)
+
+term_spec <- parsnip::rand_forest(
   mode = 'classification',
-  eval_metric = 'mlogloss',
+  trees = tune::tune(),
+  min_n = tune::tune(),
+  mtry = tune::tune()
+) %>%
+  parsnip::set_engine('ranger', probability = TRUE, importance = 'impurity', num.threads = 1)
+
+term_wf <- workflows::workflow() %>%
+  workflows::add_recipe(term_recipe) %>%
+  workflows::add_model(term_spec)
+
+term_folds <- rsample::vfold_cv(term_data, v = N_FOLDS, strata = term)
+term_params <- hardhat::extract_parameter_set_dials(term_wf) %>%
+  update_params(
+    trees = dials::trees(c(300L, 3000L)),
+    min_n = dials::min_n(c(1L, 40L)),
+    mtry = dials::mtry(c(1L, term_mtry_max))
+  )
+term_grid <- build_param_grid(term_params, TERM_GRID_SIZE)
+term_metrics <- yardstick::metric_set(yardstick::mn_log_loss, yardstick::accuracy)
+term_fit_obj <- tune_and_fit(
+  wf = term_wf,
+  folds = term_folds,
+  grid = term_grid,
   metrics = term_metrics,
   select_metric = 'mn_log_loss',
-  strata_col = 'term'
+  data = term_data
 )
 print_best('term', term_fit_obj$best)
 
-# ----- Train AAV% Model ----- #
+# ----- Train AAV% Model (Random Forest Regression) ----- #
 
-aavp_metrics <- yardstick::metric_set(yardstick::rmse, yardstick::mae)
-aavp_fit_obj <- fit_tuned_xgb(
-  data = aavp_data,
-  formula = aavP ~ .,
+aavp_recipe <- make_recipe(aavP ~ ., aavp_data)
+aavp_mtry_max <- get_mtry_max(aavp_recipe, aavp_data)
+
+aavp_spec <- parsnip::rand_forest(
   mode = 'regression',
-  eval_metric = 'rmse',
+  trees = tune::tune(),
+  min_n = tune::tune(),
+  mtry = tune::tune()
+) %>%
+  parsnip::set_engine('ranger', importance = 'impurity', num.threads = 1)
+
+aavp_wf <- workflows::workflow() %>%
+  workflows::add_recipe(aavp_recipe) %>%
+  workflows::add_model(aavp_spec)
+
+aavp_folds <- rsample::vfold_cv(aavp_data, v = N_FOLDS)
+aavp_params <- hardhat::extract_parameter_set_dials(aavp_wf) %>%
+  update_params(
+    trees = dials::trees(c(300L, 3000L)),
+    min_n = dials::min_n(c(1L, 40L)),
+    mtry = dials::mtry(c(1L, aavp_mtry_max))
+  )
+aavp_grid <- build_param_grid(aavp_params, AAVP_GRID_SIZE)
+aavp_metrics <- yardstick::metric_set(yardstick::rmse, yardstick::mae)
+aavp_fit_obj <- tune_and_fit(
+  wf = aavp_wf,
+  folds = aavp_folds,
+  grid = aavp_grid,
   metrics = aavp_metrics,
-  select_metric = 'rmse'
+  select_metric = 'rmse',
+  data = aavp_data
 )
 print_best('aavP', aavp_fit_obj$best)
 
@@ -209,11 +245,11 @@ saveRDS(aavp_fit_obj$fit, file = AAVP_OUT)
 
 # ----- Importance Plots ----- #
 
-plot_importance(
+plot_rf_importance(
   fitted_wf = term_fit_obj$fit,
-  model_name = 'Term'
+  model_name = 'Term (Random Forest)'
 )
-plot_importance(
+plot_rf_importance(
   fitted_wf = aavp_fit_obj$fit,
-  model_name = 'AAV%'
+  model_name = 'AAV% (Random Forest)'
 )

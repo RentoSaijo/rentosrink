@@ -1,0 +1,7 @@
+"split","splitRole","version","candidate","modelFile","mse","rmse","mae","rank"
+"Seen","Seen",2,"XGBoost","aavP2.rds",1.27143079406982e-05,0.00356571282364385,0.00204910540769913,1
+"Seen","Seen",1,"Random Forest","aavP1.rds",1.47119504753901e-05,0.0038356160490057,0.00215504293409647,2
+"Seen","Seen",3,"LightGBM","aavP3.rds",2.9375317653761e-05,0.00541990015164127,0.00336517659043529,3
+"Unseen Future","Unseen Future",2,"XGBoost","aavP2.rds",0.000148386830548555,0.0121814133231147,0.00867366387719965,1
+"Unseen Future","Unseen Future",3,"LightGBM","aavP3.rds",0.000180343090477112,0.0134291880051294,0.00897045448671668,2
+"Unseen Future","Unseen Future",1,"Random Forest","aavP1.rds",0.000220497439657247,0.0148491561934423,0.00963202004399924,3

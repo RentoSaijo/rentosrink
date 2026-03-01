@@ -1,0 +1,17 @@
+"scenario","term","isAllowed"
+"Re-sign",1,TRUE
+"Not Re-sign",1,TRUE
+"Re-sign",2,TRUE
+"Not Re-sign",2,TRUE
+"Re-sign",3,TRUE
+"Not Re-sign",3,TRUE
+"Re-sign",4,TRUE
+"Not Re-sign",4,TRUE
+"Re-sign",5,TRUE
+"Not Re-sign",5,TRUE
+"Re-sign",6,TRUE
+"Not Re-sign",6,TRUE
+"Re-sign",7,TRUE
+"Not Re-sign",7,TRUE
+"Re-sign",8,TRUE
+"Not Re-sign",8,FALSE

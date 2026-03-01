@@ -1,0 +1,4 @@
+"split","splitRole","version","candidate","modelFile","accuracy","logLoss","rank"
+"Unseen Future","Unseen Future",3,"LightGBM","term3.rds",0.203389830508475,1.95206819695245,1
+"Unseen Future","Unseen Future",1,"Random Forest","term1.rds",0.220338983050847,1.97468579796896,2
+"Unseen Future","Unseen Future",2,"XGBoost","term2.rds",0.186440677966102,2.15024859427035,3

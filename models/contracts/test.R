@@ -5,8 +5,8 @@ suppressMessages(library(tidyverse))
 suppressMessages(library(tidymodels))
 
 # Define skater model versions to use.
-TERM_VERSION <- 1L
-AAVP_VERSION <- 1L
+TERM_VERSION <- 3L
+AAVP_VERSION <- 2L
 FREE_AGENT_DIR <- 'data'
 
 # ----- Helpers ----- #
@@ -22,10 +22,14 @@ resolve_test_path <- function() {
   'models/contracts/data/skater_contracts_test.csv'
 }
 
+parse_prob_term_values <- function(prob_tbl) {
+  prob_cols <- colnames(prob_tbl)
+  suppressWarnings(as.integer(stringr::str_extract(prob_cols, '[0-9]+$')))
+}
+
 pull_pterm <- function(prob_tbl, term_values) {
   prob_mat <- as.matrix(prob_tbl)
-  prob_cols <- colnames(prob_tbl)
-  prob_term_values <- suppressWarnings(as.integer(sub('^\\.pred_X?', '', prob_cols)))
+  prob_term_values <- parse_prob_term_values(prob_tbl)
   col_idx <- match(term_values, prob_term_values)
   out <- rep(NA_real_, nrow(prob_mat))
   valid <- !is.na(col_idx)
@@ -67,35 +71,33 @@ build_free_agent_wide <- function(scored_df, season_id) {
     dplyr::arrange(playerId)
 }
 
-# ----- Test ----- #
+# ----- Load Models And Data ----- #
 
 term_model_path <- paste0('models/contracts/skater/term', TERM_VERSION, '.rds')
 aavp_model_path <- paste0('models/contracts/skater/aavP', AAVP_VERSION, '.rds')
 test_path <- resolve_test_path()
 
-# Load models and data.
 term_model <- load_model(term_model_path)
 aavp_model <- load_model(aavp_model_path)
-skater_contracts <- readr::read_csv(test_path, show_col_types = FALSE)
+skater_contracts_test <- readr::read_csv(test_path, show_col_types = FALSE)
 
-# Predict term probabilities and AAV%.
-term_prob <- predict(term_model, new_data = skater_contracts, type = 'prob')
-term_values <- suppressWarnings(as.integer(as.numeric(skater_contracts[['term']])))
-p_term <- pull_pterm(term_prob, term_values)
-x_aavp <- predict(aavp_model, new_data = skater_contracts) %>%
+# ----- Score Test Scenarios (Free Agents) ----- #
+
+term_prob_test <- predict(term_model, new_data = skater_contracts_test, type = 'prob')
+term_values_test <- suppressWarnings(as.integer(as.numeric(skater_contracts_test[['term']])))
+p_term_test <- pull_pterm(term_prob_test, term_values_test)
+x_aavp_test <- predict(aavp_model, new_data = skater_contracts_test) %>%
   dplyr::pull(.pred)
 
-# Write predictions.
-out <- skater_contracts %>%
+scored_test <- skater_contracts_test %>%
   dplyr::mutate(
-    pTerm = p_term,
-    xAAVP = x_aavp
+    pTerm = p_term_test,
+    xAAVP = x_aavp_test
   )
 
-# Write tidy free-agent outputs by start season.
-start_seasons <- sort(unique(out[['startSeasonId']]))
+start_seasons <- sort(unique(scored_test[['startSeasonId']]))
 for (season_id in start_seasons) {
-  free_agents_wide <- build_free_agent_wide(out, season_id)
+  free_agents_wide <- build_free_agent_wide(scored_test, season_id)
   out_path <- file.path(FREE_AGENT_DIR, paste0('skater_free_agents_', season_id, '.csv'))
   readr::write_csv(free_agents_wide, out_path)
 }

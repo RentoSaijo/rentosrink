@@ -1,0 +1,4 @@
+"split","splitRole","version","candidate","modelFile","mse","rmse","mae","rank"
+"Unseen Future","Unseen Future",2,"XGBoost","aavP2.rds",0.000148386830548555,0.0121814133231147,0.00867366387719965,1
+"Unseen Future","Unseen Future",3,"LightGBM","aavP3.rds",0.000180343090477112,0.0134291880051294,0.00897045448671668,2
+"Unseen Future","Unseen Future",1,"Random Forest","aavP1.rds",0.000220497439657247,0.0148491561934423,0.00963202004399924,3

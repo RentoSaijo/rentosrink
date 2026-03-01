@@ -6,6 +6,7 @@ suppressMessages(library(nhlscraper))
 
 # Set constant.
 END_SEASON_ID <- 20252026
+VALIDATE_SEASON_ID <- END_SEASON_ID + 10001L
 
 # Flag first and last contracts, note previous contract's term and AAV, and count which'th contract.
 contracts <- nhlscraper::contracts() %>%
@@ -83,25 +84,46 @@ calc_single_p60 <- function(stat_values, minutes_values) {
   )
 }
 
-# Convert two seasons of stats to minutes-weighted per-60 average.
+# Compute weighted average of two values, handling missing inputs.
+calc_weighted_average <- function(
+  recent_value,
+  prior_value,
+  recent_valid,
+  prior_valid,
+  recent_weight = 2,
+  prior_weight = 1
+) {
+  weight_sum <- dplyr::if_else(recent_valid, recent_weight, 0) +
+    dplyr::if_else(prior_valid, prior_weight, 0)
+  weighted_sum <- dplyr::if_else(recent_valid, recent_weight * recent_value, 0) +
+    dplyr::if_else(prior_valid, prior_weight * prior_value, 0)
+  dplyr::if_else(weight_sum > 0, weighted_sum / weight_sum, 0)
+}
+
+# Convert two seasons of stats to a 2:1 weighted per-60 average.
 calc_avg_p60 <- function(stat_recent, minutes_recent, stat_prior, minutes_prior) {
   valid_recent <- !is.na(minutes_recent) & minutes_recent > 0
   valid_prior  <- !is.na(minutes_prior) & minutes_prior > 0
-  total_minutes <- dplyr::if_else(valid_recent, minutes_recent, 0) +
-    dplyr::if_else(valid_prior, minutes_prior, 0)
-  total_stat <- dplyr::if_else(valid_recent, tidyr::replace_na(stat_recent, 0), 0) +
-    dplyr::if_else(valid_prior, tidyr::replace_na(stat_prior, 0), 0)
-  dplyr::if_else(total_minutes > 0, 60 * total_stat / total_minutes, 0)
+  p60_recent <- calc_single_p60(stat_recent, minutes_recent)
+  p60_prior <- calc_single_p60(stat_prior, minutes_prior)
+  calc_weighted_average(
+    recent_value = p60_recent,
+    prior_value = p60_prior,
+    recent_valid = valid_recent,
+    prior_valid = valid_prior
+  )
 }
 
-# Average minutes across two prior seasons.
+# Average minutes across two prior seasons with 2:1 weighting.
 calc_avg_minutes <- function(minutes_recent, minutes_prior) {
   valid_recent <- !is.na(minutes_recent) & minutes_recent > 0
   valid_prior  <- !is.na(minutes_prior) & minutes_prior > 0
-  total_minutes <- dplyr::if_else(valid_recent, minutes_recent, 0) +
-    dplyr::if_else(valid_prior, minutes_prior, 0)
-  n_valid <- as.numeric(valid_recent) + as.numeric(valid_prior)
-  dplyr::if_else(n_valid > 0, total_minutes / n_valid, 0)
+  calc_weighted_average(
+    recent_value = tidyr::replace_na(minutes_recent, 0),
+    prior_value = tidyr::replace_na(minutes_prior, 0),
+    recent_valid = valid_recent,
+    prior_valid = valid_prior
+  )
 }
 
 # Capitalize first letter of a string.
@@ -253,7 +275,7 @@ advanced_stats <- c(
 contract_season_rows <- contracts_train %>%
   dplyr::mutate(contractRowId = dplyr::row_number()) %>%
   dplyr::select(contractRowId, playerId, startSeasonId) %>%
-  tidyr::expand_grid(lookback = c(1L, 2L)) %>%
+  tidyr::expand_grid(lookback = c(2L, 3L)) %>%
   dplyr::mutate(seasonId = startSeasonId - (lookback * 10001L))
 basic_source_cols <- unique(unname(unlist(basic_stat_cols)))
 minutes_cols <- paste0('mP_2_', situations)
@@ -279,11 +301,11 @@ contract_stats_long <- contract_season_rows %>%
   dplyr::left_join(ssa_lookup, by = c('playerId', 'seasonId'), relationship = 'many-to-one')
 
 recent_stats <- contract_stats_long %>%
-  dplyr::filter(lookback == 1L) %>%
+  dplyr::filter(lookback == 2L) %>%
   dplyr::select(contractRowId, dplyr::all_of(value_cols)) %>%
   dplyr::rename_with(~ paste0(.x, '_recent'), -contractRowId)
 prior_stats <- contract_stats_long %>%
-  dplyr::filter(lookback == 2L) %>%
+  dplyr::filter(lookback == 3L) %>%
   dplyr::select(contractRowId, dplyr::all_of(value_cols)) %>%
   dplyr::rename_with(~ paste0(.x, '_prior'), -contractRowId)
 contract_stats_wide <- recent_stats %>%
@@ -429,17 +451,17 @@ contracts_test <- last_contracts %>%
 contract_season_rows_test <- contracts_test %>%
   dplyr::mutate(contractRowId = dplyr::row_number()) %>%
   dplyr::select(contractRowId, playerId, startSeasonId) %>%
-  tidyr::expand_grid(lookback = c(1L, 2L)) %>%
+  tidyr::expand_grid(lookback = c(2L, 3L)) %>%
   dplyr::mutate(seasonId = startSeasonId - (lookback * 10001L))
 contract_stats_long_test <- contract_season_rows_test %>%
   dplyr::left_join(sss_lookup, by = c('playerId', 'seasonId'), relationship = 'many-to-one') %>%
   dplyr::left_join(ssa_lookup, by = c('playerId', 'seasonId'), relationship = 'many-to-one')
 recent_stats_test <- contract_stats_long_test %>%
-  dplyr::filter(lookback == 1L) %>%
+  dplyr::filter(lookback == 2L) %>%
   dplyr::select(contractRowId, dplyr::all_of(value_cols)) %>%
   dplyr::rename_with(~ paste0(.x, '_recent'), -contractRowId)
 prior_stats_test <- contract_stats_long_test %>%
-  dplyr::filter(lookback == 2L) %>%
+  dplyr::filter(lookback == 3L) %>%
   dplyr::select(contractRowId, dplyr::all_of(value_cols)) %>%
   dplyr::rename_with(~ paste0(.x, '_prior'), -contractRowId)
 contract_stats_wide_test <- recent_stats_test %>%
@@ -454,7 +476,14 @@ contracts_test <- contracts_test %>%
     dplyr::across(dplyr::all_of(feature_names), ~ tidyr::replace_na(.x, 0))
   )
 
+# Split model data into train and validate sets.
+contracts_validate <- contracts_train %>%
+  dplyr::filter(startSeasonId == VALIDATE_SEASON_ID)
+contracts_train <- contracts_train %>%
+  dplyr::filter(startSeasonId != VALIDATE_SEASON_ID)
+
 # Write to CSV.
 readr::write_csv(contracts_train, 'models/contracts/data/skater_contracts_train.csv')
+readr::write_csv(contracts_validate, 'models/contracts/data/skater_contracts_validate.csv')
 readr::write_csv(contracts_test, 'models/contracts/data/skater_contracts_test.csv')
 readr::write_csv(contracts_clean, 'data/skater_contracts.csv')
