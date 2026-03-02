@@ -56,6 +56,7 @@ st.markdown(
 
 st.markdown('### A. Data')
 st.markdown('Training uses NHL play-by-play data pulled through `nhlscraper`, specifically `gc_pbps()`, with regular season and playoff shot events (`goal`, `shot-on-goal`, `missed-shot`) as the supervised sample. The model-training scripts fit on 2022-23 through 2024-25, while we repeatedly compare three anchor seasons that serve different validation roles: 2021-22 is an unseen past check (backward out-of-sample), 2023-24 is a seen in-window reference, and 2025-26 is an unseen future check (forward out-of-sample). Keeping those roles fixed throughout our evaluation makes each comparison interpretable as either in-era fit quality or out-of-era robustness.')
+st.markdown('Several context fields use hockey analytics shorthand that is worth defining once. Corsi tracks all shot attempts (shots on goal, missed shots, and blocked shots), while Fenwick excludes blocked shots; in both cases, for/against splits help capture game flow and territorial pressure before the shot event. Score-state and period-time features are included because tactical shot selection changes with game state, especially late-game score effects.')
 season_role = pd.DataFrame(
     [
         {'Season': '2021-22', 'Role in Comparison': 'Unseen Past (backward out-of-sample)'},
@@ -102,8 +103,9 @@ Some notes:
 '''
 )
 
-st.markdown('### B. Partioning')
+st.markdown('### B. Partitioning')
 st.markdown("Partition rules are straightforward: Standard 5v5 uses `situationCode == '1551'`; Special Teams uses non-5v5, non-shootout, non-empty-net shots; Empty Net uses `isEmptyNetAgainst == TRUE`; and Shootout / Penalty Shot uses `situationCode` in `{1010, 0101}`.")
+st.markdown('In hockey terms, these are fundamentally different chance environments. Standard 5v5 is the baseline state with both goalies in net and even manpower; special teams includes power-play and penalty-kill situations where space, passing lanes, and shot quality distributions shift sharply; empty-net states have extreme tactical incentives and very different baseline conversion; and shootout / penalty-shot attempts are isolated one-on-one events. We partition because each regime has a distinct scoring prior, and mixing them into a single estimator degrades calibration.')
 
 by_season_df, overall_df, non_standard_df, code_overlap_df = load_architecture_data()
 if by_season_df is None:
