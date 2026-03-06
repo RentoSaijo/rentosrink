@@ -524,6 +524,8 @@ if (length(skater_ids) > 0L) {
 
 out_dir <- file.path("data", "gbgs", "basic")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+split_dir <- file.path(out_dir, "skater")
+dir.create(split_dir, recursive = TRUE, showWarnings = FALSE)
 
 season_path <- file.path(out_dir, paste0("skaters_", SEASON, ".csv"))
 
@@ -531,8 +533,13 @@ readr::write_csv(skaters, season_path)
 
 if (nrow(skaters) > 0) {
   player_ids <- sort(unique(skaters$playerId))
+  wrong_paths <- file.path(out_dir, paste0(player_ids, "_", SEASON, ".csv"))
+  wrong_paths <- wrong_paths[file.exists(wrong_paths)]
+  if (length(wrong_paths) > 0L) {
+    invisible(file.remove(wrong_paths))
+  }
   for (player_id in player_ids) {
-    player_path <- file.path(out_dir, paste0(player_id, "_", SEASON, ".csv"))
+    player_path <- file.path(split_dir, paste0(player_id, "_", SEASON, ".csv"))
     readr::write_csv(
       skaters %>%
         dplyr::filter(playerId == player_id) %>%

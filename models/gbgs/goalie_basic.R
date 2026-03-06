@@ -250,7 +250,7 @@ stats_long <- dplyr::bind_rows(
   summarise_goalie_metric_state(goals %>% dplyr::mutate(value = 1), "gA"),
   summarise_goalie_metric_state(goals_ap1, "apA"),
   summarise_goalie_metric_state(goals_ap2, "asA"),
-  summarise_goalie_metric_state(rebound_given, "rgA"),
+  summarise_goalie_metric_state(rebound_given, "rgA")
 ) %>%
   dplyr::filter(strength %in% c("ev", "pp", "sh"))
 
@@ -277,6 +277,8 @@ goalies <- goalie_games %>%
 
 out_dir <- file.path("data", "gbgs", "basic")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+split_dir <- file.path(out_dir, "goalie")
+dir.create(split_dir, recursive = TRUE, showWarnings = FALSE)
 
 season_path <- file.path(out_dir, paste0("goalies_", SEASON, ".csv"))
 
@@ -292,9 +294,15 @@ if (nrow(goalies) > 0) {
     invisible(file.remove(wrong_paths))
   }
 
+  root_wrong_paths <- file.path(out_dir, paste0(player_ids, "_", SEASON, ".csv"))
+  root_wrong_paths <- root_wrong_paths[file.exists(root_wrong_paths)]
+  if (length(root_wrong_paths) > 0L) {
+    invisible(file.remove(root_wrong_paths))
+  }
+
   readr::write_csv(goalies, season_path)
   for (player_id in player_ids) {
-    player_path <- file.path(out_dir, paste0(player_id, "_", SEASON, ".csv"))
+    player_path <- file.path(split_dir, paste0(player_id, "_", SEASON, ".csv"))
     readr::write_csv(
       goalies %>%
         dplyr::filter(playerId == player_id) %>%
