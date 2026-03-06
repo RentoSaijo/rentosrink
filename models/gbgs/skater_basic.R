@@ -62,6 +62,17 @@ empty_metric_tbl <- function(metric) {
   )
 }
 
+empty_metric_long <- function() {
+  tibble::tibble(
+    playerId = integer(),
+    gameId = integer(),
+    gameTypeId = integer(),
+    strength = character(),
+    metric = character(),
+    value = double()
+  )
+}
+
 summarise_individual <- function(df, metric, player_col, strength_col, value_col = "value") {
   if (nrow(df) == 0) return(empty_metric_tbl(metric))
 
@@ -124,14 +135,7 @@ summarise_onice <- function(
 
 metric_to_long <- function(df, metric) {
   if (nrow(df) == 0) {
-    return(tibble::tibble(
-      playerId = integer(),
-      gameId = integer(),
-      gameTypeId = integer(),
-      strength = character(),
-      metric = character(),
-      value = double()
-    ))
+    return(empty_metric_long())
   }
 
   df %>%
@@ -142,6 +146,90 @@ metric_to_long <- function(df, metric) {
       strength,
       metric = metric,
       value = as.numeric(.data[[metric]])
+    )
+}
+
+summarise_individual_state <- function(
+    df,
+    metric,
+    player_col,
+    strength_col,
+    state_col = "stateModifier",
+    value_col = "value"
+) {
+  if (nrow(df) == 0) return(empty_metric_long())
+
+  out <- df %>%
+    dplyr::transmute(
+      playerId = as.integer(.data[[player_col]]),
+      gameId = as.integer(gameId),
+      gameTypeId = as.integer(gameTypeId),
+      strength = as.character(.data[[strength_col]]),
+      state = as.character(.data[[state_col]]),
+      value = as.numeric(.data[[value_col]])
+    ) %>%
+    dplyr::filter(!is.na(playerId), !is.na(strength), !is.na(state), !is.na(value))
+
+  if (nrow(out) == 0) return(empty_metric_long())
+
+  out %>%
+    dplyr::group_by(playerId, gameId, gameTypeId, strength, state) %>%
+    dplyr::summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::transmute(
+      playerId,
+      gameId,
+      gameTypeId,
+      strength,
+      metric = paste0(metric, "_", state),
+      value
+    )
+}
+
+summarise_onice_state <- function(
+    df,
+    metric,
+    ids_col,
+    strength_col,
+    state_col = "stateModifier",
+    value_col = "value",
+    drop_player_ids = integer()
+) {
+  if (nrow(df) == 0) return(empty_metric_long())
+
+  out <- df %>%
+    dplyr::transmute(
+      playerIds = normalize_id_list(.data[[ids_col]]),
+      gameId = as.integer(gameId),
+      gameTypeId = as.integer(gameTypeId),
+      strength = as.character(.data[[strength_col]]),
+      state = as.character(.data[[state_col]]),
+      value = as.numeric(.data[[value_col]])
+    ) %>%
+    dplyr::filter(!is.na(strength), !is.na(state), !is.na(value))
+
+  if (nrow(out) == 0) return(empty_metric_long())
+
+  out <- out %>%
+    tidyr::unnest_longer(playerIds, values_to = "playerId") %>%
+    dplyr::mutate(playerId = as.integer(playerId)) %>%
+    dplyr::filter(!is.na(playerId))
+
+  if (length(drop_player_ids) > 0L) {
+    out <- out %>% dplyr::filter(!playerId %in% drop_player_ids)
+  }
+
+  if (nrow(out) == 0) return(empty_metric_long())
+
+  out %>%
+    dplyr::group_by(playerId, gameId, gameTypeId, strength, state) %>%
+    dplyr::summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::transmute(
+      playerId,
+      gameId,
+      gameTypeId,
+      strength,
+      metric = paste0(metric, "_", state),
+      value
     )
 }
 
@@ -236,7 +324,13 @@ pbp <- pbp %>%
     duration = dplyr::coalesce(as.numeric(duration), 0),
     isRush = dplyr::coalesce(as.logical(isRush), FALSE),
     isRebound = dplyr::coalesce(as.logical(isRebound), FALSE),
-    createdReboundFlag = dplyr::coalesce(as.logical(createdRebound), FALSE)
+    createdReboundFlag = dplyr::coalesce(as.logical(createdRebound), FALSE),
+    stateModifier = dplyr::case_when(
+      isRush & isRebound ~ "both",
+      isRush ~ "rush",
+      isRebound ~ "rebound",
+      TRUE ~ "neither"
+    )
   )
 
 goalie_ids <- pbp %>%
@@ -333,27 +427,21 @@ shots <- pbp %>%
   )
 
 metric_longs <- c(metric_longs, list(
-  metric_to_long(summarise_individual(shots, "iCF", "shooterId", "strengthFor"), "iCF"),
-  metric_to_long(summarise_onice(shots, "oCF", "playerIdsFor", "strengthFor", drop_player_ids = goalie_ids), "oCF"),
-  metric_to_long(summarise_onice(shots, "oCA", "playerIdsAgainst", "strengthAgainst", drop_player_ids = goalie_ids), "oCA"),
-  metric_to_long(summarise_individual(shots, "iFF", "shooterId", "strengthFor", value_col = "isFenwick"), "iFF"),
-  metric_to_long(summarise_onice(shots, "oFF", "playerIdsFor", "strengthFor", value_col = "isFenwick", drop_player_ids = goalie_ids), "oFF"),
-  metric_to_long(summarise_onice(shots, "oFA", "playerIdsAgainst", "strengthAgainst", value_col = "isFenwick", drop_player_ids = goalie_ids), "oFA"),
-  metric_to_long(summarise_individual(shots, "iSF", "shooterId", "strengthFor", value_col = "isSOG"), "iSF"),
-  metric_to_long(summarise_onice(shots, "oSF", "playerIdsFor", "strengthFor", value_col = "isSOG", drop_player_ids = goalie_ids), "oSF"),
-  metric_to_long(summarise_onice(shots, "oSA", "playerIdsAgainst", "strengthAgainst", value_col = "isSOG", drop_player_ids = goalie_ids), "oSA"),
-  metric_to_long(summarise_individual(shots, "iGF", "scoringPlayerId", "strengthFor", value_col = "isGoal"), "iGF"),
-  metric_to_long(summarise_onice(shots, "oGF", "playerIdsFor", "strengthFor", value_col = "isGoal", drop_player_ids = goalie_ids), "oGF"),
-  metric_to_long(summarise_onice(shots, "oGA", "playerIdsAgainst", "strengthAgainst", value_col = "isGoal", drop_player_ids = goalie_ids), "oGA"),
-  metric_to_long(summarise_individual(shots, "iRSF", "shooterId", "strengthFor", value_col = "isRushVal"), "iRSF"),
-  metric_to_long(summarise_onice(shots, "oRSF", "playerIdsFor", "strengthFor", value_col = "isRushVal", drop_player_ids = goalie_ids), "oRSF"),
-  metric_to_long(summarise_onice(shots, "oRSA", "playerIdsAgainst", "strengthAgainst", value_col = "isRushVal", drop_player_ids = goalie_ids), "oRSA"),
-  metric_to_long(summarise_individual(shots, "iRBF", "shooterId", "strengthFor", value_col = "isReboundVal"), "iRBF"),
-  metric_to_long(summarise_onice(shots, "oRBF", "playerIdsFor", "strengthFor", value_col = "isReboundVal", drop_player_ids = goalie_ids), "oRBF"),
-  metric_to_long(summarise_onice(shots, "oRBA", "playerIdsAgainst", "strengthAgainst", value_col = "isReboundVal", drop_player_ids = goalie_ids), "oRBA"),
-  metric_to_long(summarise_individual(shots, "iRCF", "shooterId", "strengthFor", value_col = "createdReboundVal"), "iRCF"),
-  metric_to_long(summarise_onice(shots, "oRCF", "playerIdsFor", "strengthFor", value_col = "createdReboundVal", drop_player_ids = goalie_ids), "oRCF"),
-  metric_to_long(summarise_onice(shots, "oRCA", "playerIdsAgainst", "strengthAgainst", value_col = "createdReboundVal", drop_player_ids = goalie_ids), "oRCA")
+  summarise_individual_state(shots, "iCF", "shooterId", "strengthFor"),
+  summarise_onice_state(shots, "oCF", "playerIdsFor", "strengthFor", drop_player_ids = goalie_ids),
+  summarise_onice_state(shots, "oCA", "playerIdsAgainst", "strengthAgainst", drop_player_ids = goalie_ids),
+  summarise_individual_state(shots, "iFF", "shooterId", "strengthFor", value_col = "isFenwick"),
+  summarise_onice_state(shots, "oFF", "playerIdsFor", "strengthFor", value_col = "isFenwick", drop_player_ids = goalie_ids),
+  summarise_onice_state(shots, "oFA", "playerIdsAgainst", "strengthAgainst", value_col = "isFenwick", drop_player_ids = goalie_ids),
+  summarise_individual_state(shots, "iSF", "shooterId", "strengthFor", value_col = "isSOG"),
+  summarise_onice_state(shots, "oSF", "playerIdsFor", "strengthFor", value_col = "isSOG", drop_player_ids = goalie_ids),
+  summarise_onice_state(shots, "oSA", "playerIdsAgainst", "strengthAgainst", value_col = "isSOG", drop_player_ids = goalie_ids),
+  summarise_individual_state(shots, "iGF", "scoringPlayerId", "strengthFor", value_col = "isGoal"),
+  summarise_onice_state(shots, "oGF", "playerIdsFor", "strengthFor", value_col = "isGoal", drop_player_ids = goalie_ids),
+  summarise_onice_state(shots, "oGA", "playerIdsAgainst", "strengthAgainst", value_col = "isGoal", drop_player_ids = goalie_ids),
+  summarise_individual_state(shots, "iRCF", "shooterId", "strengthFor", value_col = "createdReboundVal"),
+  summarise_onice_state(shots, "oRCF", "playerIdsFor", "strengthFor", value_col = "createdReboundVal", drop_player_ids = goalie_ids),
+  summarise_onice_state(shots, "oRCA", "playerIdsAgainst", "strengthAgainst", value_col = "createdReboundVal", drop_player_ids = goalie_ids)
 ))
 
 goals <- pbp %>% dplyr::filter(typeDescKey == "goal")
@@ -361,12 +449,12 @@ goals_ap1 <- goals %>% dplyr::mutate(value = as.numeric(!is.na(assist1PlayerId))
 goals_ap2 <- goals %>% dplyr::mutate(value = as.numeric(!is.na(assist2PlayerId))) %>% dplyr::filter(value > 0)
 
 metric_longs <- c(metric_longs, list(
-  metric_to_long(summarise_individual(goals_ap1, "iAPF", "assist1PlayerId", "strengthFor"), "iAPF"),
-  metric_to_long(summarise_onice(goals_ap1, "oAPF", "playerIdsFor", "strengthFor", drop_player_ids = goalie_ids), "oAPF"),
-  metric_to_long(summarise_onice(goals_ap1, "oAPA", "playerIdsAgainst", "strengthAgainst", drop_player_ids = goalie_ids), "oAPA"),
-  metric_to_long(summarise_individual(goals_ap2, "iASF", "assist2PlayerId", "strengthFor"), "iASF"),
-  metric_to_long(summarise_onice(goals_ap2, "oASF", "playerIdsFor", "strengthFor", drop_player_ids = goalie_ids), "oASF"),
-  metric_to_long(summarise_onice(goals_ap2, "oASA", "playerIdsAgainst", "strengthAgainst", drop_player_ids = goalie_ids), "oASA")
+  summarise_individual_state(goals_ap1, "iAPF", "assist1PlayerId", "strengthFor"),
+  summarise_onice_state(goals_ap1, "oAPF", "playerIdsFor", "strengthFor", drop_player_ids = goalie_ids),
+  summarise_onice_state(goals_ap1, "oAPA", "playerIdsAgainst", "strengthAgainst", drop_player_ids = goalie_ids),
+  summarise_individual_state(goals_ap2, "iASF", "assist2PlayerId", "strengthFor"),
+  summarise_onice_state(goals_ap2, "oASF", "playerIdsFor", "strengthFor", drop_player_ids = goalie_ids),
+  summarise_onice_state(goals_ap2, "oASA", "playerIdsAgainst", "strengthAgainst", drop_player_ids = goalie_ids)
 ))
 
 stats_long <- dplyr::bind_rows(metric_longs) %>%
@@ -384,17 +472,24 @@ metric_names <- c(
   "iFW", "oFW", "iFL", "oFL",
   "iHG", "oHG", "iHT", "oHT",
   "iTW", "oTW", "iGW", "oGW",
-  "iMD", "oMD", "iMC", "oMC",
+  "iMD", "oMD", "iMC", "oMC"
+)
+
+state_metric_bases <- c(
   "iCF", "oCF", "oCA",
   "iFF", "oFF", "oFA",
   "iSF", "oSF", "oSA",
   "iGF", "oGF", "oGA",
   "iAPF", "oAPF", "oAPA",
   "iASF", "oASF", "oASA",
-  "iRSF", "oRSF", "oRSA",
-  "iRBF", "oRBF", "oRBA",
   "iRCF", "oRCF", "oRCA"
 )
+state_levels <- c("neither", "rush", "rebound", "both")
+state_metric_names <- unlist(
+  lapply(state_metric_bases, function(metric) paste0(metric, "_", state_levels)),
+  use.names = FALSE
+)
+all_metric_names <- c(metric_names, state_metric_names)
 
 player_game_strength <- stats_long %>%
   tidyr::pivot_wider(
@@ -404,18 +499,18 @@ player_game_strength <- stats_long %>%
   ) %>%
   dplyr::left_join(game_dates, by = c("gameId", "gameTypeId"))
 
-player_game_strength <- ensure_cols(player_game_strength, metric_names)
+player_game_strength <- ensure_cols(player_game_strength, all_metric_names)
 
 skaters <- player_game_strength %>%
   tidyr::pivot_wider(
     id_cols = c(playerId, gameId, gameTypeId, gameDate),
     names_from = strength,
-    values_from = tidyselect::all_of(metric_names),
+    values_from = tidyselect::all_of(all_metric_names),
     names_glue = "{.value}_{strength}",
     values_fill = 0
   )
 
-expected_cols <- make_expected_metric_cols(metric_names)
+expected_cols <- make_expected_metric_cols(all_metric_names)
 skaters <- ensure_cols(skaters, expected_cols) %>%
   dplyr::select(playerId, gameId, gameTypeId, gameDate, tidyselect::all_of(expected_cols)) %>%
   dplyr::arrange(playerId, gameDate, gameId)
@@ -430,12 +525,6 @@ out_dir <- file.path("data", "gbgs", "basic")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 season_path <- file.path(out_dir, paste0("skaters_", SEASON, ".csv"))
-
-existing_player_files <- Sys.glob(file.path(out_dir, paste0("*_", SEASON, ".csv")))
-existing_player_files <- setdiff(existing_player_files, season_path)
-if (length(existing_player_files) > 0L) {
-  invisible(file.remove(existing_player_files))
-}
 
 readr::write_csv(skaters, season_path)
 
