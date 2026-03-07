@@ -20,7 +20,7 @@ Aggregate files keep the entity ID column. Split files drop it because it is alr
 ## General Rules
 
 - Each row is one entity in one game.
-- `gameTypeId` appears in skater and team GBGs. `2` means regular season and `3` means playoffs.
+- `gameTypeId` appears only in team GBGs. `2` means regular season and `3` means playoffs.
 - Regular-season shootout events are excluded from all event counts. Concretely, `gameTypeId == 2` and `period == 5` is removed before aggregation.
 - Penalty shots are still counted.
 - Strength suffixes:
@@ -44,7 +44,6 @@ Aggregate files keep the entity ID column. Split files drop it because it is alr
 
 - `playerId`: skater ID. Present only in the aggregate skater file.
 - `gameId`: NHL game ID.
-- `gameTypeId`: `2` regular season, `3` playoffs.
 - `gameDate`: game date.
 
 ### Non-State Skater Metrics
