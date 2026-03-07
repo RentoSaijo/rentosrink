@@ -1,22 +1,27 @@
 # GBG Basic Codebook
 
-This document describes the column meanings for the basic game-by-game (GBG) datasets built by:
+This document describes the basic game-by-game (GBG) datasets built by:
 
 - [skater_basic.R](/Users/rsai_91/Desktop/Work/rentosrink/models/gbgs/skater_basic.R)
 - [goalie_basic.R](/Users/rsai_91/Desktop/Work/rentosrink/models/gbgs/goalie_basic.R)
+- [team_basic.R](/Users/rsai_91/Desktop/Work/rentosrink/models/gbgs/team_basic.R)
 
-Current output files:
+## File Layout
 
 - Skaters aggregate: `data/gbgs/basic/skaters_{seasonId}.csv`
-- Skaters per-player: `data/gbgs/basic/{playerId}_{seasonId}.csv`
+- Skaters split: `data/gbgs/basic/skater/{playerId}_{seasonId}.csv`
 - Goalies aggregate: `data/gbgs/basic/goalies_{seasonId}.csv`
-- Goalies per-player: `data/gbgs/basic/{playerId}_{seasonId}.csv`
+- Goalies split: `data/gbgs/basic/goalie/{playerId}_{seasonId}.csv`
+- Teams aggregate: `data/gbgs/basic/teams_{seasonId}.csv`
+- Teams split: `data/gbgs/basic/team/{teamId}_{seasonId}.csv`
+
+Aggregate files keep the entity ID column. Split files drop it because it is already encoded in the filename.
 
 ## General Rules
 
-- Each row is one player in one game.
-- `gameTypeId` appears only in skater basic GBGs. `2` means regular season and `3` means playoffs.
-- Regular-season shootout events are excluded from all statistics. Concretely, `gameTypeId == 2` and `period == 5` is removed before aggregation.
+- Each row is one entity in one game.
+- `gameTypeId` appears in skater and team GBGs. `2` means regular season and `3` means playoffs.
+- Regular-season shootout events are excluded from all event counts. Concretely, `gameTypeId == 2` and `period == 5` is removed before aggregation.
 - Penalty shots are still counted.
 - Strength suffixes:
   - `_ev`: even strength
@@ -31,6 +36,7 @@ Current output files:
   - `_rush_`: rush only
   - `_rebound_`: rebound only
   - `_both_`: both rush and rebound
+- `createdRebound` is used as-is from play-by-play. It is not restricted to on-net attempts.
 
 ## Skater Basic GBG
 
@@ -45,34 +51,36 @@ Current output files:
 
 These columns exist as `{metric}_{strength}`.
 
-- `mP`: minutes played, from `skater_game_report(..., category = "timeonice")`, converted from seconds to minutes.
+- `mP`: minutes played, from `skater_game_report(..., category = "timeonice")`, converted to minutes.
 - `iFW`: individual faceoffs won.
-- `oFW`: on-ice faceoffs won by the player’s team while the player was on the ice.
+- `oFW`: on-ice faceoffs won by the skater's team while the skater was on the ice.
 - `iFL`: individual faceoffs lost.
-- `oFL`: on-ice faceoffs lost by the player’s team while the player was on the ice.
+- `oFL`: on-ice faceoffs lost by the skater's team while the skater was on the ice.
 - `iHG`: individual hits given.
-- `oHG`: on-ice hits given by the player’s team.
+- `oHG`: on-ice hits given by the skater's team.
 - `iHT`: individual hits taken.
-- `oHT`: on-ice hits taken by the player’s team.
+- `oHT`: on-ice hits taken by the skater's team.
 - `iTW`: individual takeaways.
-- `oTW`: on-ice takeaways by the player’s team.
+- `oTW`: on-ice takeaways by the skater's team.
 - `iGW`: individual giveaways.
-- `oGW`: on-ice giveaways by the player’s team.
+- `oGW`: on-ice giveaways by the skater's team.
 - `iMD`: individual penalty minutes drawn.
-- `oMD`: on-ice penalty minutes drawn by the player’s team.
+- `oMD`: on-ice penalty minutes drawn by the skater's team.
 - `iMC`: individual penalty minutes committed.
-- `oMC`: on-ice penalty minutes committed by the player’s team.
+- `oMC`: on-ice penalty minutes committed by the skater's team.
 
 ### State-Modified Skater Metrics
 
-These columns exist as `{metric}_{state}_{strength}`, where `state` is one of:
+These columns exist as `{metric}_{state}_{strength}`.
+
+States:
 
 - `neither`
 - `rush`
 - `rebound`
 - `both`
 
-Shot-derived skater metrics:
+Metrics:
 
 - `iCF`: individual corsi for.
 - `oCF`: on-ice corsi for.
@@ -98,13 +106,13 @@ Shot-derived skater metrics:
 
 ### Skater Prefix Meaning
 
-- `i`: individual. The player was directly credited with the event.
-- `o`: on-ice. The player was on the ice for the event.
+- `i`: individual. The skater was directly credited with the event.
+- `o`: on-ice. The skater was on the ice for the event.
 
 ### Skater Direction Meaning
 
-- `F`: for the player’s team.
-- `A`: against the player’s team.
+- `F`: for the skater's team.
+- `A`: against the skater's team.
 - `D`: drawn.
 - `C`: committed.
 
@@ -127,7 +135,7 @@ States:
 - `rebound`
 - `both`
 
-Goalie metrics:
+Metrics:
 
 - `cA`: corsi against.
 - `fA`: fenwick against.
@@ -140,15 +148,77 @@ Goalie metrics:
 ### Goalie Event Notes
 
 - `cA`, `fA`, `sA`, and `gA` follow the same inclusive shot hierarchy used for skaters.
-- `apA` and `asA` are attributed from goal events against.
+- `apA` and `asA` are attributed from goal events against and use the same rush/rebound state modifiers as the underlying goal event.
 - `rgA` is based on `createdRebound == TRUE` against the goalie.
-- For blocked shots, `goalieInNetId` is usually missing in raw play-by-play. The goalie build infers the defending goalie from `playerIdsAgainst` when exactly one goalie is present there.
+- For blocked shots, raw play-by-play usually has no `goalieInNetId`. The goalie build infers the defending goalie from `playerIdsAgainst` when a defending goalie can be identified there.
 - True empty-net events are not forced onto a goalie.
+
+## Team Basic GBG
+
+### Identifier Columns
+
+- `teamId`: team ID. Present only in the aggregate team file.
+- `gameId`: NHL game ID.
+- `gameTypeId`: `2` regular season, `3` playoffs.
+- `gameDate`: game date.
+
+### Non-State Team Metrics
+
+These columns exist as `{metric}_{strength}`.
+
+- `mP`: team minutes played at that strength in that game.
+  - `mP_pp` comes from `team_game_report(..., category = "powerplaytime")` via `timeOnIcePp`.
+  - `mP_sh` comes from `team_game_report(..., category = "penaltykilltime")` via `timeOnIceShorthanded`.
+  - `mP_ev` is computed as actual game duration minus `mP_pp` minus `mP_sh`.
+  - Actual game duration is taken from play-by-play as the maximum `secondsElapsedInGame`, so overtime is included and regular-season shootouts are excluded.
+- `FW`: team faceoffs won.
+- `FL`: team faceoffs lost.
+- `HG`: team hits given.
+- `HT`: team hits taken.
+- `TW`: team takeaways.
+- `GW`: team giveaways.
+- `MD`: penalty minutes drawn by the team.
+- `MC`: penalty minutes committed by the team.
+
+### State-Modified Team Metrics
+
+These columns exist as `{metric}_{state}_{strength}`.
+
+States:
+
+- `neither`
+- `rush`
+- `rebound`
+- `both`
+
+Metrics:
+
+- `CF`: team corsi for.
+- `CA`: team corsi against.
+- `FF`: team fenwick for.
+- `FA`: team fenwick against.
+- `SF`: team shots on goal for.
+- `SA`: team shots on goal against.
+- `GF`: team goals for.
+- `GA`: team goals against.
+- `APF`: team primary assists for.
+- `APA`: team primary assists against.
+- `ASF`: team secondary assists for.
+- `ASA`: team secondary assists against.
+- `RCF`: team rebounds created for.
+- `RCA`: team rebounds created against.
+
+### Team Notes
+
+- Team GBGs intentionally exclude individual `i*` columns and keep only team-level counts.
+- Team rows are built only for games that have play-by-play, so scheduled but unplayed placeholder games are excluded.
+- Team metrics do not use an `o` prefix. They are already team-level by definition.
 
 ## Examples
 
-- `iFW_ev`: skater’s faceoffs won at even strength in that game.
-- `oCF_rush_pp`: on-ice corsi for on rush-only shot attempts during power-play time.
-- `iGF_both_sh`: individual goals scored on a shot marked as both rush and rebound while short-handed.
-- `gA_rebound_ev`: goalie’s goals against on rebound-only events at even strength.
-- `apA_both_pp`: primary assists against on goals that were both rush and rebound during penalty-kill exposure from the goalie’s perspective.
+- `iFW_ev`: skater faceoffs won at even strength in that game.
+- `oCF_rush_pp`: skater on-ice corsi for on rush-only events during power-play time.
+- `gA_rebound_ev`: goalie goals against on rebound-only events at even strength.
+- `apA_both_sh`: goalie primary assists against on goals marked as both rush and rebound while the goalie was short-handed.
+- `FW_pp`: team faceoffs won on the power play.
+- `CA_neither_ev`: team corsi against on non-rush, non-rebound events at even strength.
