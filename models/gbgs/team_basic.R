@@ -302,21 +302,18 @@ team_time <- dplyr::bind_rows(
 # ----- Metrics ----- #
 
 metric_names <- c("mP", "FW", "FL", "HG", "HT", "TW", "GW", "MD", "MC")
-state_metric_bases <- c(
+shot_metric_names <- c(
   "CF", "CA",
   "FF", "FA",
   "SF", "SA",
   "GF", "GA",
   "APF", "APA",
   "ASF", "ASA",
+  "RSF", "RSA",
+  "RBF", "RBA",
   "RCF", "RCA"
 )
-state_levels <- c("neither", "rush", "rebound", "both")
-state_metric_names <- unlist(
-  lapply(state_metric_bases, function(metric) paste0(metric, "_", state_levels)),
-  use.names = FALSE
-)
-all_metric_names <- c(metric_names, state_metric_names)
+all_metric_names <- c(metric_names, shot_metric_names)
 
 faceoffs <- pbp %>% dplyr::filter(typeDescKey == "faceoff") %>% dplyr::mutate(value = 1)
 hits <- pbp %>% dplyr::filter(typeDescKey == "hit") %>% dplyr::mutate(value = 1)
@@ -325,12 +322,17 @@ giveaways <- pbp %>% dplyr::filter(typeDescKey == "giveaway") %>% dplyr::mutate(
 penalties <- pbp %>% dplyr::filter(typeDescKey == "penalty") %>% dplyr::mutate(value = pmax(duration, 0))
 
 shots <- pbp %>%
-  dplyr::filter(typeDescKey %in% c("goal", "shot-on-goal", "missed-shot", "blocked-shot")) %>%
+  dplyr::filter(
+    typeDescKey %in% c("goal", "shot-on-goal", "missed-shot", "blocked-shot"),
+    !(typeDescKey == "missed-shot" & reason == "short")
+  ) %>%
   dplyr::mutate(
     value = 1,
     isFenwick = as.numeric(typeDescKey != "blocked-shot"),
     isSOG = as.numeric(typeDescKey %in% c("goal", "shot-on-goal")),
     isGoal = as.numeric(typeDescKey == "goal"),
+    isRushVal = as.numeric(isRush),
+    isReboundVal = as.numeric(isRebound),
     createdReboundVal = as.numeric(createdReboundFlag)
   )
 
@@ -352,20 +354,24 @@ stats_long <- dplyr::bind_rows(
   summarise_team_metric(giveaways, "GW", "teamForId", "strengthFor"),
   summarise_team_metric(penalties, "MD", "teamAgainstId", "strengthAgainst"),
   summarise_team_metric(penalties, "MC", "teamForId", "strengthFor"),
-  summarise_team_metric_state(shots, "CF", "teamForId", "strengthFor"),
-  summarise_team_metric_state(shots, "CA", "teamAgainstId", "strengthAgainst"),
-  summarise_team_metric_state(shots, "FF", "teamForId", "strengthFor", value_col = "isFenwick"),
-  summarise_team_metric_state(shots, "FA", "teamAgainstId", "strengthAgainst", value_col = "isFenwick"),
-  summarise_team_metric_state(shots, "SF", "teamForId", "strengthFor", value_col = "isSOG"),
-  summarise_team_metric_state(shots, "SA", "teamAgainstId", "strengthAgainst", value_col = "isSOG"),
-  summarise_team_metric_state(shots, "GF", "teamForId", "strengthFor", value_col = "isGoal"),
-  summarise_team_metric_state(shots, "GA", "teamAgainstId", "strengthAgainst", value_col = "isGoal"),
-  summarise_team_metric_state(goals_ap1, "APF", "teamForId", "strengthFor"),
-  summarise_team_metric_state(goals_ap1, "APA", "teamAgainstId", "strengthAgainst"),
-  summarise_team_metric_state(goals_ap2, "ASF", "teamForId", "strengthFor"),
-  summarise_team_metric_state(goals_ap2, "ASA", "teamAgainstId", "strengthAgainst"),
-  summarise_team_metric_state(shots, "RCF", "teamForId", "strengthFor", value_col = "createdReboundVal"),
-  summarise_team_metric_state(shots, "RCA", "teamAgainstId", "strengthAgainst", value_col = "createdReboundVal")
+  summarise_team_metric(shots, "CF", "teamForId", "strengthFor"),
+  summarise_team_metric(shots, "CA", "teamAgainstId", "strengthAgainst"),
+  summarise_team_metric(shots, "FF", "teamForId", "strengthFor", value_col = "isFenwick"),
+  summarise_team_metric(shots, "FA", "teamAgainstId", "strengthAgainst", value_col = "isFenwick"),
+  summarise_team_metric(shots, "SF", "teamForId", "strengthFor", value_col = "isSOG"),
+  summarise_team_metric(shots, "SA", "teamAgainstId", "strengthAgainst", value_col = "isSOG"),
+  summarise_team_metric(shots, "GF", "teamForId", "strengthFor", value_col = "isGoal"),
+  summarise_team_metric(shots, "GA", "teamAgainstId", "strengthAgainst", value_col = "isGoal"),
+  summarise_team_metric(goals_ap1, "APF", "teamForId", "strengthFor"),
+  summarise_team_metric(goals_ap1, "APA", "teamAgainstId", "strengthAgainst"),
+  summarise_team_metric(goals_ap2, "ASF", "teamForId", "strengthFor"),
+  summarise_team_metric(goals_ap2, "ASA", "teamAgainstId", "strengthAgainst"),
+  summarise_team_metric(shots, "RSF", "teamForId", "strengthFor", value_col = "isRushVal"),
+  summarise_team_metric(shots, "RSA", "teamAgainstId", "strengthAgainst", value_col = "isRushVal"),
+  summarise_team_metric(shots, "RBF", "teamForId", "strengthFor", value_col = "isReboundVal"),
+  summarise_team_metric(shots, "RBA", "teamAgainstId", "strengthAgainst", value_col = "isReboundVal"),
+  summarise_team_metric(shots, "RCF", "teamForId", "strengthFor", value_col = "createdReboundVal"),
+  summarise_team_metric(shots, "RCA", "teamAgainstId", "strengthAgainst", value_col = "createdReboundVal")
 ) %>%
   dplyr::filter(strength %in% c("ev", "pp", "sh"))
 
@@ -390,7 +396,7 @@ teams_out <- team_game_strength %>%
 
 expected_cols <- make_expected_metric_cols(all_metric_names)
 teams_out <- ensure_cols(teams_out, expected_cols) %>%
-  dplyr::select(teamId, gameId, gameTypeId, gameDate, tidyselect::all_of(expected_cols)) %>%
+  dplyr::select(teamId, gameId, gameDate, tidyselect::all_of(expected_cols)) %>%
   dplyr::arrange(teamId, gameDate, gameId)
 
 # ----- Write Files ----- #

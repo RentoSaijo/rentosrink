@@ -20,9 +20,10 @@ Aggregate files keep the entity ID column. Split files drop it because it is alr
 ## General Rules
 
 - Each row is one entity in one game.
-- `gameTypeId` appears only in team GBGs. `2` means regular season and `3` means playoffs.
+- `gameTypeId` is not written to the GBG outputs because it is inferable from `gameId`.
 - Regular-season shootout events are excluded from all event counts. Concretely, `gameTypeId == 2` and `period == 5` is removed before aggregation.
 - Penalty shots are still counted.
+- Missed shots with `reason == "short"` are excluded from all shot-attempt-derived metrics because they are treated as non-attempts.
 - Strength suffixes:
   - `_ev`: even strength
   - `_pp`: power play
@@ -31,11 +32,10 @@ Aggregate files keep the entity ID column. Split files drop it because it is alr
   - goals are a subset of shots on goal
   - shots on goal are a subset of fenwick
   - fenwick is a subset of corsi
-- Rush/rebound state modifiers:
-  - `_neither_`: shot event was neither rush nor rebound
-  - `_rush_`: rush only
-  - `_rebound_`: rebound only
-  - `_both_`: both rush and rebound
+- Rush and rebound metrics are separate count families, not mutually exclusive state partitions:
+  - rush metrics are based on `isRush == TRUE`
+  - rebound-chance metrics are based on `isRebound == TRUE`
+  - rebound-created metrics are based on `createdRebound == TRUE`
 - `createdRebound` is used as-is from play-by-play. It is not restricted to on-net attempts.
 
 ## Skater Basic GBG
@@ -46,9 +46,11 @@ Aggregate files keep the entity ID column. Split files drop it because it is alr
 - `gameId`: NHL game ID.
 - `gameDate`: game date.
 
-### Non-State Skater Metrics
+### Skater Metrics
 
-These columns exist as `{metric}_{strength}`.
+All skater event columns use the form `{metric}_{strength}`.
+
+Metrics:
 
 - `mP`: minutes played, from `skater_game_report(..., category = "timeonice")`, converted to minutes.
 - `iFW`: individual faceoffs won.
@@ -67,20 +69,6 @@ These columns exist as `{metric}_{strength}`.
 - `oMD`: on-ice penalty minutes drawn by the skater's team.
 - `iMC`: individual penalty minutes committed.
 - `oMC`: on-ice penalty minutes committed by the skater's team.
-
-### State-Modified Skater Metrics
-
-These columns exist as `{metric}_{state}_{strength}`.
-
-States:
-
-- `neither`
-- `rush`
-- `rebound`
-- `both`
-
-Metrics:
-
 - `iCF`: individual corsi for.
 - `oCF`: on-ice corsi for.
 - `oCA`: on-ice corsi against.
@@ -99,6 +87,12 @@ Metrics:
 - `iASF`: individual secondary assists for.
 - `oASF`: on-ice secondary assists for.
 - `oASA`: on-ice secondary assists against.
+- `iRSF`: individual rush chances for.
+- `oRSF`: on-ice rush chances for.
+- `oRSA`: on-ice rush chances against.
+- `iRBF`: individual rebound chances for.
+- `oRBF`: on-ice rebound chances for.
+- `oRBA`: on-ice rebound chances against.
 - `iRCF`: individual rebounds created for.
 - `oRCF`: on-ice rebounds created for.
 - `oRCA`: on-ice rebounds created against.
@@ -123,16 +117,9 @@ Metrics:
 - `gameId`: NHL game ID.
 - `gameDate`: game date.
 
-### State-Modified Goalie Metrics
+### Goalie Metrics
 
-All goalie event columns use the form `{metric}_{state}_{strength}`.
-
-States:
-
-- `neither`
-- `rush`
-- `rebound`
-- `both`
+All goalie event columns use the form `{metric}_{strength}`.
 
 Metrics:
 
@@ -142,12 +129,16 @@ Metrics:
 - `gA`: goals against.
 - `apA`: primary assists against.
 - `asA`: secondary assists against.
-- `rgA`: rebounds given against.
+- `rsA`: rush chances against.
+- `rbA`: rebound chances against.
+- `rgA`: rebounds generated against.
 
-### Goalie Event Notes
+### Goalie Notes
 
 - `cA`, `fA`, `sA`, and `gA` follow the same inclusive shot hierarchy used for skaters.
-- `apA` and `asA` are attributed from goal events against and use the same rush/rebound state modifiers as the underlying goal event.
+- `apA` and `asA` are attributed from goal events against.
+- `rsA` is based on `isRush == TRUE` against the goalie.
+- `rbA` is based on `isRebound == TRUE` against the goalie.
 - `rgA` is based on `createdRebound == TRUE` against the goalie.
 - For blocked shots, raw play-by-play usually has no `goalieInNetId`. The goalie build infers the defending goalie from `playerIdsAgainst` when a defending goalie can be identified there.
 - True empty-net events are not forced onto a goalie.
@@ -158,12 +149,13 @@ Metrics:
 
 - `teamId`: team ID. Present only in the aggregate team file.
 - `gameId`: NHL game ID.
-- `gameTypeId`: `2` regular season, `3` playoffs.
 - `gameDate`: game date.
 
-### Non-State Team Metrics
+### Team Metrics
 
-These columns exist as `{metric}_{strength}`.
+All team event columns use the form `{metric}_{strength}`.
+
+Metrics:
 
 - `mP`: team minutes played at that strength in that game.
   - `mP_pp` comes from `team_game_report(..., category = "powerplaytime")` via `timeOnIcePp`.
@@ -178,20 +170,6 @@ These columns exist as `{metric}_{strength}`.
 - `GW`: team giveaways.
 - `MD`: penalty minutes drawn by the team.
 - `MC`: penalty minutes committed by the team.
-
-### State-Modified Team Metrics
-
-These columns exist as `{metric}_{state}_{strength}`.
-
-States:
-
-- `neither`
-- `rush`
-- `rebound`
-- `both`
-
-Metrics:
-
 - `CF`: team corsi for.
 - `CA`: team corsi against.
 - `FF`: team fenwick for.
@@ -204,6 +182,10 @@ Metrics:
 - `APA`: team primary assists against.
 - `ASF`: team secondary assists for.
 - `ASA`: team secondary assists against.
+- `RSF`: team rush chances for.
+- `RSA`: team rush chances against.
+- `RBF`: team rebound chances for.
+- `RBA`: team rebound chances against.
 - `RCF`: team rebounds created for.
 - `RCA`: team rebounds created against.
 
@@ -216,8 +198,10 @@ Metrics:
 ## Examples
 
 - `iFW_ev`: skater faceoffs won at even strength in that game.
-- `oCF_rush_pp`: skater on-ice corsi for on rush-only events during power-play time.
-- `gA_rebound_ev`: goalie goals against on rebound-only events at even strength.
-- `apA_both_sh`: goalie primary assists against on goals marked as both rush and rebound while the goalie was short-handed.
-- `FW_pp`: team faceoffs won on the power play.
-- `CA_neither_ev`: team corsi against on non-rush, non-rebound events at even strength.
+- `oCF_pp`: skater on-ice corsi for during power-play time.
+- `iRSF_ev`: skater rush chances for at even strength.
+- `oRBA_sh`: skater on-ice rebound chances against while short-handed.
+- `rsA_ev`: goalie rush chances against at even strength.
+- `rgA_pp`: goalie rebounds generated against on the penalty kill.
+- `RSF_ev`: team rush chances for at even strength.
+- `RCA_pp`: team rebounds created against on the penalty kill.

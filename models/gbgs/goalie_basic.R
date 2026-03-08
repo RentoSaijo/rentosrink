@@ -110,12 +110,7 @@ safe_goalie_game_summary <- function(season, game_type) {
     )
 }
 
-summarise_goalie_metric_state <- function(
-    df,
-    metric,
-    state_col = "stateModifier",
-    value_col = "value"
-) {
+summarise_goalie_metric <- function(df, metric, value_col = "value") {
   if (nrow(df) == 0) return(empty_metric_long())
 
   df %>%
@@ -124,20 +119,12 @@ summarise_goalie_metric_state <- function(
       gameId = as.integer(gameId),
       gameTypeId = as.integer(gameTypeId),
       strength = as.character(strengthAgainst),
-      state = as.character(.data[[state_col]]),
       value = as.numeric(.data[[value_col]])
     ) %>%
-    dplyr::filter(!is.na(playerId), !is.na(strength), !is.na(state), !is.na(value)) %>%
-    dplyr::group_by(playerId, gameId, gameTypeId, strength, state) %>%
+    dplyr::filter(!is.na(playerId), !is.na(strength), !is.na(value)) %>%
+    dplyr::group_by(playerId, gameId, gameTypeId, strength) %>%
     dplyr::summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
-    dplyr::transmute(
-      playerId,
-      gameId,
-      gameTypeId,
-      strength,
-      metric = paste0(metric, "_", state),
-      value
-    )
+    dplyr::mutate(metric = metric, .before = value)
 }
 
 infer_blocked_goalie <- function(ids_against, goalie_ids) {
@@ -211,17 +198,23 @@ game_dates <- dplyr::bind_rows(
 
 # ----- Metrics ----- #
 
-state_metric_bases <- c("cA", "fA", "sA", "gA", "apA", "asA", "rgA")
-state_levels <- c("neither", "rush", "rebound", "both")
-state_metric_names <- unlist(
-  lapply(state_metric_bases, function(metric) paste0(metric, "_", state_levels)),
-  use.names = FALSE
+metric_names <- c(
+  "cA", "fA", "sA", "gA", "apA", "asA",
+  "rsA", "rbA", "rgA"
 )
-all_metric_names <- state_metric_names
+all_metric_names <- metric_names
 
 shots_all <- pbp %>%
-  dplyr::filter(typeDescKey %in% c("goal", "shot-on-goal", "missed-shot", "blocked-shot")) %>%
-  dplyr::mutate(value = 1)
+  dplyr::filter(
+    typeDescKey %in% c("goal", "shot-on-goal", "missed-shot", "blocked-shot"),
+    !(typeDescKey == "missed-shot" & reason == "short")
+  ) %>%
+  dplyr::mutate(
+    value = 1,
+    isRushVal = as.numeric(isRush),
+    isReboundVal = as.numeric(isRebound),
+    createdReboundVal = as.numeric(createdReboundFlag)
+  )
 
 shots_fenwick <- shots_all %>%
   dplyr::filter(typeDescKey %in% c("goal", "shot-on-goal", "missed-shot"))
@@ -232,9 +225,6 @@ shots_sog <- shots_all %>%
 goals <- pbp %>%
   dplyr::filter(typeDescKey == "goal")
 
-rebound_given <- shots_all %>%
-  dplyr::mutate(value = as.numeric(createdReboundFlag))
-
 goals_ap1 <- goals %>%
   dplyr::mutate(value = as.numeric(!is.na(assist1PlayerId))) %>%
   dplyr::filter(value > 0)
@@ -244,13 +234,15 @@ goals_ap2 <- goals %>%
   dplyr::filter(value > 0)
 
 stats_long <- dplyr::bind_rows(
-  summarise_goalie_metric_state(shots_all, "cA"),
-  summarise_goalie_metric_state(shots_fenwick, "fA"),
-  summarise_goalie_metric_state(shots_sog, "sA"),
-  summarise_goalie_metric_state(goals %>% dplyr::mutate(value = 1), "gA"),
-  summarise_goalie_metric_state(goals_ap1, "apA"),
-  summarise_goalie_metric_state(goals_ap2, "asA"),
-  summarise_goalie_metric_state(rebound_given, "rgA")
+  summarise_goalie_metric(shots_all, "cA"),
+  summarise_goalie_metric(shots_fenwick, "fA"),
+  summarise_goalie_metric(shots_sog, "sA"),
+  summarise_goalie_metric(goals %>% dplyr::mutate(value = 1), "gA"),
+  summarise_goalie_metric(goals_ap1, "apA"),
+  summarise_goalie_metric(goals_ap2, "asA"),
+  summarise_goalie_metric(shots_all, "rsA", value_col = "isRushVal"),
+  summarise_goalie_metric(shots_all, "rbA", value_col = "isReboundVal"),
+  summarise_goalie_metric(shots_all, "rgA", value_col = "createdReboundVal")
 ) %>%
   dplyr::filter(strength %in% c("ev", "pp", "sh"))
 
