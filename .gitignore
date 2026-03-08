@@ -4,6 +4,7 @@
 .Ruserdata
 .DS_Store
 models/xG/data/
+models/xG/results/
 __pycache__/
 *.pyc
 .idea
