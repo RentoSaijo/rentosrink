@@ -26,6 +26,21 @@ normalize_strength_state <- function(x) {
   )
 }
 
+normalize_situation_code <- function(x) {
+  out <- suppressWarnings(as.integer(as.character(x)))
+  out <- ifelse(is.na(out), NA_character_, sprintf("%04d", out))
+  out
+}
+
+derive_strength_state <- function(strength_state, situation_code, game_type_id, period_number) {
+  out <- normalize_strength_state(strength_state)
+  sc <- normalize_situation_code(situation_code)
+  is_shootout <- !is.na(game_type_id) & !is.na(period_number) & game_type_id == 2L & period_number == 5L
+  is_penalty_shot <- !is.na(sc) & sc %in% c("0101", "1010") & !is_shootout
+  out[is_penalty_shot] <- "ev"
+  out
+}
+
 flip_strength_code <- function(x) {
   dplyr::case_when(
     x == "pp" ~ "sh",
@@ -127,6 +142,29 @@ summarise_goalie_metric <- function(df, metric, value_col = "value") {
     dplyr::mutate(metric = metric, .before = value)
 }
 
+summarise_goalie_actor_metric <- function(
+    df,
+    metric,
+    player_col,
+    strength_col,
+    value_col = "value"
+) {
+  if (nrow(df) == 0) return(empty_metric_long())
+
+  df %>%
+    dplyr::transmute(
+      playerId = as.integer(.data[[player_col]]),
+      gameId = as.integer(gameId),
+      gameTypeId = as.integer(gameTypeId),
+      strength = as.character(.data[[strength_col]]),
+      value = as.numeric(.data[[value_col]])
+    ) %>%
+    dplyr::filter(!is.na(playerId), !is.na(strength), !is.na(value)) %>%
+    dplyr::group_by(playerId, gameId, gameTypeId, strength) %>%
+    dplyr::summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::mutate(metric = metric, .before = value)
+}
+
 infer_blocked_goalie <- function(ids_against, goalie_ids) {
   ids <- as.integer(ids_against)
   hit <- base::intersect(ids, goalie_ids)
@@ -147,38 +185,40 @@ goalie_ids <- sort(unique(goalie_games$playerId))
 cat("Loading pbp and shift data...\n")
 pbps <- nhlscraper::gc_pbps(SEASON)
 shifts <- nhlscraper::shift_charts(SEASON)
-pbp <- nhlscraper::add_on_ice_players(pbps, shifts) %>%
+pbp <- nhlscraper::add_shift_times(pbps, shifts)
+
+goalie_in_net_id <- if ("goalieInNetId" %in% names(pbp)) {
+  suppressWarnings(as.integer(pbp$goalieInNetId))
+} else {
+  rep(NA_integer_, nrow(pbp))
+}
+pbp$goalieInNetIdCompat <- goalie_in_net_id
+
+period_number <- if ("periodNumber" %in% names(pbp)) {
+  suppressWarnings(as.integer(pbp$periodNumber))
+} else if ("period" %in% names(pbp)) {
+  suppressWarnings(as.integer(pbp$period))
+} else {
+  rep(NA_integer_, nrow(pbp))
+}
+
+pbp <- pbp %>%
+  dplyr::mutate(period = period_number) %>%
   dplyr::filter(
     gameTypeId %in% c(2L, 3L),
     !(gameTypeId == 2L & period == 5L)
   ) %>%
   dplyr::mutate(
-    strengthFor = normalize_strength_state(strengthState),
+    typeDescKey = as.character(eventTypeDescKey),
+    strengthFor = derive_strength_state(strengthState, situationCode, gameTypeId, period),
     strengthAgainst = flip_strength_code(strengthFor),
-    playerIdsAgainst = normalize_id_list(playerIdsAgainst),
     isRush = dplyr::coalesce(as.logical(isRush), FALSE),
     isRebound = dplyr::coalesce(as.logical(isRebound), FALSE),
     createdReboundFlag = dplyr::coalesce(as.logical(createdRebound), FALSE),
-    stateModifier = dplyr::case_when(
-      isRush & isRebound ~ "both",
-      isRush ~ "rush",
-      isRebound ~ "rebound",
-      TRUE ~ "neither"
-    )
-  )
-
-pbp <- pbp %>%
-  dplyr::mutate(
-    inferredBlockedGoalieId = purrr::map_int(
-      playerIdsAgainst,
-      infer_blocked_goalie,
-      goalie_ids = goalie_ids
-    ),
-    goalieIdResolved = dplyr::case_when(
-      !is.na(goalieInNetId) ~ as.integer(goalieInNetId),
-      typeDescKey == "blocked-shot" ~ inferredBlockedGoalieId,
-      TRUE ~ NA_integer_
-    )
+    goalieIdResolved = as.integer(dplyr::coalesce(
+      goaliePlayerIdAgainst,
+      goalieInNetIdCompat
+    ))
   )
 
 games <- nhlscraper::games() %>%
@@ -200,9 +240,14 @@ game_dates <- dplyr::bind_rows(
 
 metric_names <- c(
   "cA", "fA", "sA", "gA", "apA", "asA",
+  "mD", "mC",
   "rsA", "rbA", "rgA"
 )
 all_metric_names <- metric_names
+
+penalties <- pbp %>%
+  dplyr::filter(typeDescKey == "penalty") %>%
+  dplyr::mutate(value = pmax(dplyr::coalesce(as.numeric(penaltyDuration), 0), 0))
 
 shots_all <- pbp %>%
   dplyr::filter(
@@ -240,6 +285,8 @@ stats_long <- dplyr::bind_rows(
   summarise_goalie_metric(goals %>% dplyr::mutate(value = 1), "gA"),
   summarise_goalie_metric(goals_ap1, "apA"),
   summarise_goalie_metric(goals_ap2, "asA"),
+  summarise_goalie_actor_metric(penalties, "mD", "drawnByPlayerId", "strengthAgainst"),
+  summarise_goalie_actor_metric(penalties, "mC", "committedByPlayerId", "strengthFor"),
   summarise_goalie_metric(shots_all, "rsA", value_col = "isRushVal"),
   summarise_goalie_metric(shots_all, "rbA", value_col = "isReboundVal"),
   summarise_goalie_metric(shots_all, "rgA", value_col = "createdReboundVal")

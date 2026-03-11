@@ -23,7 +23,9 @@ Aggregate files keep the entity ID column. Split files drop it because it is alr
 - `gameTypeId` is not written to the GBG outputs because it is inferable from `gameId`.
 - Regular-season shootout events are excluded from all event counts. Concretely, `gameTypeId == 2` and `period == 5` is removed before aggregation.
 - Penalty shots are still counted.
+- Non-shootout penalty-shot situation codes `0101` and `1010` are forced into even strength before aggregation.
 - Missed shots with `reason == "short"` are excluded from all shot-attempt-derived metrics because they are treated as non-attempts.
+- Strength is taken from the situation-code-derived `strengthState` field, not inferred from the number of populated on-ice player slots.
 - Strength suffixes:
   - `_ev`: even strength
   - `_pp`: power play
@@ -66,9 +68,7 @@ Metrics:
 - `iGW`: individual giveaways.
 - `oGW`: on-ice giveaways by the skater's team.
 - `iMD`: individual penalty minutes drawn.
-- `oMD`: on-ice penalty minutes drawn by the skater's team.
 - `iMC`: individual penalty minutes committed.
-- `oMC`: on-ice penalty minutes committed by the skater's team.
 - `iCF`: individual corsi for.
 - `oCF`: on-ice corsi for.
 - `oCA`: on-ice corsi against.
@@ -129,6 +129,8 @@ Metrics:
 - `gA`: goals against.
 - `apA`: primary assists against.
 - `asA`: secondary assists against.
+- `mD`: penalty minutes drawn by the goalie.
+- `mC`: penalty minutes committed by the goalie.
 - `rsA`: rush chances against.
 - `rbA`: rebound chances against.
 - `rgA`: rebounds generated against.
@@ -140,7 +142,7 @@ Metrics:
 - `rsA` is based on `isRush == TRUE` against the goalie.
 - `rbA` is based on `isRebound == TRUE` against the goalie.
 - `rgA` is based on `createdRebound == TRUE` against the goalie.
-- For blocked shots, raw play-by-play usually has no `goalieInNetId`. The goalie build infers the defending goalie from `playerIdsAgainst` when a defending goalie can be identified there.
+- For blocked shots, the shift-enriched feed usually provides `goaliePlayerIdAgainst`, which is used directly as the defending goalie.
 - True empty-net events are not forced onto a goalie.
 
 ## Team Basic GBG

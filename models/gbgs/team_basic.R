@@ -26,12 +26,26 @@ normalize_strength_state <- function(x) {
   )
 }
 
-strength_from_counts <- function(for_count, against_count) {
+normalize_situation_code <- function(x) {
+  out <- suppressWarnings(as.integer(as.character(x)))
+  out <- ifelse(is.na(out), NA_character_, sprintf("%04d", out))
+  out
+}
+
+derive_strength_state <- function(strength_state, situation_code, game_type_id, period_number) {
+  out <- normalize_strength_state(strength_state)
+  sc <- normalize_situation_code(situation_code)
+  is_shootout <- !is.na(game_type_id) & !is.na(period_number) & game_type_id == 2L & period_number == 5L
+  is_penalty_shot <- !is.na(sc) & sc %in% c("0101", "1010") & !is_shootout
+  out[is_penalty_shot] <- "ev"
+  out
+}
+
+flip_strength_code <- function(x) {
   dplyr::case_when(
-    is.na(for_count) | is.na(against_count) ~ NA_character_,
-    for_count == against_count ~ "ev",
-    for_count > against_count ~ "pp",
-    for_count < against_count ~ "sh",
+    x == "pp" ~ "sh",
+    x == "sh" ~ "pp",
+    x == "ev" ~ "ev",
     TRUE ~ NA_character_
   )
 }
@@ -159,15 +173,27 @@ games <- nhlscraper::games() %>%
   )
 
 cat("Loading pbp data...\n")
-pbp <- nhlscraper::gc_pbps(SEASON) %>%
+pbp <- nhlscraper::gc_pbps(SEASON)
+
+period_number <- if ("periodNumber" %in% names(pbp)) {
+  suppressWarnings(as.integer(pbp$periodNumber))
+} else if ("period" %in% names(pbp)) {
+  suppressWarnings(as.integer(pbp$period))
+} else {
+  rep(NA_integer_, nrow(pbp))
+}
+
+pbp <- pbp %>%
+  dplyr::mutate(period = period_number) %>%
   dplyr::filter(
     gameTypeId %in% c(2L, 3L),
     !(gameTypeId == 2L & period == 5L)
   ) %>%
   dplyr::left_join(games, by = c("gameId", "gameTypeId")) %>%
   dplyr::mutate(
-    homeStrength = strength_from_counts(homeSkaterCount, awaySkaterCount),
-    awayStrength = strength_from_counts(awaySkaterCount, homeSkaterCount),
+    typeDescKey = as.character(eventTypeDescKey),
+    strengthFor = derive_strength_state(strengthState, situationCode, gameTypeId, period),
+    strengthAgainst = flip_strength_code(strengthFor),
     teamForId = dplyr::case_when(
       eventOwnerTeamId == homeTeamId ~ homeTeamId,
       eventOwnerTeamId == visitingTeamId ~ visitingTeamId,
@@ -178,26 +204,10 @@ pbp <- nhlscraper::gc_pbps(SEASON) %>%
       eventOwnerTeamId == visitingTeamId ~ homeTeamId,
       TRUE ~ NA_integer_
     ),
-    strengthFor = dplyr::case_when(
-      eventOwnerTeamId == homeTeamId ~ homeStrength,
-      eventOwnerTeamId == visitingTeamId ~ awayStrength,
-      TRUE ~ NA_character_
-    ),
-    strengthAgainst = dplyr::case_when(
-      eventOwnerTeamId == homeTeamId ~ awayStrength,
-      eventOwnerTeamId == visitingTeamId ~ homeStrength,
-      TRUE ~ NA_character_
-    ),
-    duration = dplyr::coalesce(as.numeric(duration), 0),
+    duration = dplyr::coalesce(as.numeric(penaltyDuration), 0),
     isRush = dplyr::coalesce(as.logical(isRush), FALSE),
     isRebound = dplyr::coalesce(as.logical(isRebound), FALSE),
-    createdReboundFlag = dplyr::coalesce(as.logical(createdRebound), FALSE),
-    stateModifier = dplyr::case_when(
-      isRush & isRebound ~ "both",
-      isRush ~ "rush",
-      isRebound ~ "rebound",
-      TRUE ~ "neither"
-    )
+    createdReboundFlag = dplyr::coalesce(as.logical(createdRebound), FALSE)
   ) %>%
   dplyr::arrange(gameId, sortOrder)
 

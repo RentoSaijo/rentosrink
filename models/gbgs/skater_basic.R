@@ -32,6 +32,21 @@ normalize_strength_state <- function(x) {
   )
 }
 
+normalize_situation_code <- function(x) {
+  out <- suppressWarnings(as.integer(as.character(x)))
+  out <- ifelse(is.na(out), NA_character_, sprintf("%04d", out))
+  out
+}
+
+derive_strength_state <- function(strength_state, situation_code, game_type_id, period_number) {
+  out <- normalize_strength_state(strength_state)
+  sc <- normalize_situation_code(situation_code)
+  is_shootout <- !is.na(game_type_id) & !is.na(period_number) & game_type_id == 2L & period_number == 5L
+  is_penalty_shot <- !is.na(sc) & sc %in% c("0101", "1010") & !is_shootout
+  out[is_penalty_shot] <- "ev"
+  out
+}
+
 flip_strength_code <- function(x) {
   dplyr::case_when(
     x == "pp" ~ "sh",
@@ -50,6 +65,20 @@ normalize_id_list <- function(x) {
       return(integer())
     }
     as.integer(ids)
+  })
+}
+
+collect_player_ids <- function(df, pattern) {
+  cols <- grep(pattern, names(df), value = TRUE)
+  if (length(cols) == 0L) {
+    return(rep(list(integer()), nrow(df)))
+  }
+
+  mat <- as.matrix(df[, cols, drop = FALSE])
+  lapply(seq_len(nrow(mat)), function(i) {
+    ids <- suppressWarnings(as.integer(mat[i, ]))
+    ids <- ids[!is.na(ids)]
+    unname(ids)
   })
 }
 
@@ -309,7 +338,18 @@ make_expected_metric_cols <- function(
 cat("Loading pbp and shift data...\n")
 pbps <- nhlscraper::gc_pbps(SEASON)
 shifts <- nhlscraper::shift_charts(SEASON)
-pbp <- nhlscraper::add_on_ice_players(pbps, shifts) %>%
+pbp <- nhlscraper::add_shift_times(pbps, shifts)
+
+period_number <- if ("periodNumber" %in% names(pbp)) {
+  suppressWarnings(as.integer(pbp$periodNumber))
+} else if ("period" %in% names(pbp)) {
+  suppressWarnings(as.integer(pbp$period))
+} else {
+  rep(NA_integer_, nrow(pbp))
+}
+
+pbp <- pbp %>%
+  dplyr::mutate(period = period_number) %>%
   dplyr::filter(
     gameTypeId %in% c(2L, 3L),
     !(gameTypeId == 2L & period == 5L)
@@ -317,28 +357,26 @@ pbp <- nhlscraper::add_on_ice_players(pbps, shifts) %>%
 
 pbp <- pbp %>%
   dplyr::mutate(
-    strengthFor = normalize_strength_state(strengthState),
+    typeDescKey = as.character(eventTypeDescKey),
+    strengthFor = derive_strength_state(strengthState, situationCode, gameTypeId, period),
     strengthAgainst = flip_strength_code(strengthFor),
-    playerIdsFor = normalize_id_list(playerIdsFor),
-    playerIdsAgainst = normalize_id_list(playerIdsAgainst),
     shooterId = as.integer(dplyr::coalesce(shootingPlayerId, scoringPlayerId)),
-    duration = dplyr::coalesce(as.numeric(duration), 0),
+    duration = dplyr::coalesce(as.numeric(penaltyDuration), 0),
     isRush = dplyr::coalesce(as.logical(isRush), FALSE),
     isRebound = dplyr::coalesce(as.logical(isRebound), FALSE),
-    createdReboundFlag = dplyr::coalesce(as.logical(createdRebound), FALSE),
-    stateModifier = dplyr::case_when(
-      isRush & isRebound ~ "both",
-      isRush ~ "rush",
-      isRebound ~ "rebound",
-      TRUE ~ "neither"
-    )
+    createdReboundFlag = dplyr::coalesce(as.logical(createdRebound), FALSE)
   )
 
-goalie_ids <- pbp %>%
-  dplyr::distinct(goalieInNetId) %>%
-  dplyr::filter(!is.na(goalieInNetId)) %>%
-  dplyr::pull(goalieInNetId) %>%
-  as.integer()
+pbp$playerIdsFor <- collect_player_ids(pbp, "^skater[0-9]+PlayerIdFor$")
+pbp$playerIdsAgainst <- collect_player_ids(pbp, "^skater[0-9]+PlayerIdAgainst$")
+
+goalie_ids <- sort(unique(c(
+  suppressWarnings(as.integer(pbp$goaliePlayerIdFor)),
+  suppressWarnings(as.integer(pbp$goaliePlayerIdAgainst)),
+  suppressWarnings(as.integer(pbp$homeGoaliePlayerId)),
+  suppressWarnings(as.integer(pbp$awayGoaliePlayerId))
+)))
+goalie_ids <- goalie_ids[!is.na(goalie_ids)]
 
 cat("Loading TOI and game-date data...\n")
 toi_long <- dplyr::bind_rows(
@@ -410,9 +448,7 @@ penalties <- pbp %>%
 
 metric_longs <- c(metric_longs, list(
   metric_to_long(summarise_individual(penalties, "iMD", "drawnByPlayerId", "strengthAgainst"), "iMD"),
-  metric_to_long(summarise_onice(penalties, "oMD", "playerIdsAgainst", "strengthAgainst", drop_player_ids = goalie_ids), "oMD"),
-  metric_to_long(summarise_individual(penalties, "iMC", "committedByPlayerId", "strengthFor"), "iMC"),
-  metric_to_long(summarise_onice(penalties, "oMC", "playerIdsFor", "strengthFor", drop_player_ids = goalie_ids), "oMC")
+  metric_to_long(summarise_individual(penalties, "iMC", "committedByPlayerId", "strengthFor"), "iMC")
 ))
 
 shots <- pbp %>%
@@ -482,7 +518,7 @@ metric_names <- c(
   "iFW", "oFW", "iFL", "oFL",
   "iHG", "oHG", "iHT", "oHT",
   "iTW", "oTW", "iGW", "oGW",
-  "iMD", "oMD", "iMC", "oMC",
+  "iMD", "iMC",
   "iCF", "oCF", "oCA",
   "iFF", "oFF", "oFA",
   "iSF", "oSF", "oSA",
