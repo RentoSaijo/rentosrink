@@ -5,6 +5,7 @@
 .DS_Store
 models/xG/data/
 models/xG/results/
+models/xG/nhlscraper/
 __pycache__/
 *.pyc
 .idea

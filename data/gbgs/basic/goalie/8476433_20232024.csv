@@ -1,4 +1,4 @@
-gameId,gameDate,cA_ev,cA_pp,cA_sh,fA_ev,fA_pp,fA_sh,sA_ev,sA_pp,sA_sh,gA_ev,gA_pp,gA_sh,apA_ev,apA_pp,apA_sh,asA_ev,asA_pp,asA_sh,rsA_ev,rsA_pp,rsA_sh,rbA_ev,rbA_pp,rbA_sh,rgA_ev,rgA_pp,rgA_sh
-2023020123,2023-10-28,21,0,3,19,0,2,16,0,1,2,0,0,2,0,0,1,0,0,2,0,0,2,0,0,2,0,0
-2023020187,2023-11-07,19,0,0,13,0,0,11,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,0
-2023020202,2023-11-09,56,2,10,42,2,6,31,2,3,2,1,0,2,1,0,2,1,0,5,0,1,7,0,1,8,0,1
+gameId,gameDate,cA_ev,cA_pp,cA_sh,fA_ev,fA_pp,fA_sh,sA_ev,sA_pp,sA_sh,gA_ev,gA_pp,gA_sh,apA_ev,apA_pp,apA_sh,asA_ev,asA_pp,asA_sh,mD_ev,mD_pp,mD_sh,mC_ev,mC_pp,mC_sh,rsA_ev,rsA_pp,rsA_sh,rbA_ev,rbA_pp,rbA_sh,rgA_ev,rgA_pp,rgA_sh
+2023020123,2023-10-28,21,0,3,19,0,2,16,0,1,2,0,0,2,0,0,1,0,0,0,0,0,0,0,0,2,0,0,2,0,0,2,0,0
+2023020187,2023-11-07,19,0,0,13,0,0,11,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,0
+2023020202,2023-11-09,56,2,10,42,2,6,31,2,3,2,1,0,2,1,0,2,1,0,0,0,0,0,0,0,5,0,1,7,0,1,7,0,1
