@@ -1,0 +1,839 @@
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(nhlscraper))
+suppressPackageStartupMessages(library(tidymodels))
+suppressPackageStartupMessages(library(glmnet))
+suppressPackageStartupMessages(library(bonsai))
+
+tidymodels::tidymodels_prefer()
+
+source(file.path("models", "xG", "prepare.R"))
+
+set.seed(20060527)
+
+XG_DATASETS <- c("sd", "ev", "pp", "sh", "en", "so")
+SBSS_PARTS <- 5L
+CURRENT_V3_ENGINES <- c(
+  sd = "xgboost",
+  ev = "lightgbm",
+  pp = "xgboost",
+  sh = "lightgbm",
+  en = "lightgbm",
+  so = "xgboost"
+)
+CURRENT_V3_MODEL_KEYS <- c(
+  sd = "sd1",
+  ev = "ev2",
+  pp = "pp1",
+  sh = "sh2",
+  en = "en2",
+  so = "so1"
+)
+LEGACY_V1_PAIR <- c(20102011L, 20112012L)
+CURRENT_V3_PAIR <- c(20232024L, 20242025L)
+
+SBSS_CACHE <- new.env(parent = emptyenv())
+
+load_training_env <- function(path) {
+  env <- new.env(parent = globalenv())
+  sys.source(path, envir = env)
+  env
+}
+
+SBSS_CURRENT_XGB_ENV <- load_training_env(file.path("models", "xG", "train1.R"))
+SBSS_CURRENT_LGB_ENV <- load_training_env(file.path("models", "xG", "train2.R"))
+SBSS_LEGACY_ENV <- load_training_env(file.path("models", "xG", "legacy", "train.R"))
+
+cached_read_csv <- function(path) {
+  key <- paste0("csv::", normalizePath(path, winslash = "/", mustWork = TRUE))
+
+  if (!exists(key, envir = SBSS_CACHE, inherits = FALSE)) {
+    assign(
+      key,
+      readr::read_csv(path, show_col_types = FALSE),
+      envir = SBSS_CACHE
+    )
+  }
+
+  get(key, envir = SBSS_CACHE, inherits = FALSE)
+}
+
+cached_read_rds <- function(path) {
+  key <- paste0("rds::", normalizePath(path, winslash = "/", mustWork = TRUE))
+
+  if (!exists(key, envir = SBSS_CACHE, inherits = FALSE)) {
+    assign(key, readRDS(path), envir = SBSS_CACHE)
+  }
+
+  get(key, envir = SBSS_CACHE, inherits = FALSE)
+}
+
+season_start_from_season_id <- function(season_id) {
+  as.integer(substr(as.character(season_id), 1, 4))
+}
+
+season_start_from_game_id <- function(game_id) {
+  as.integer(substr(as.character(game_id), 1, 4))
+}
+
+normalize_situation_code <- function(x) {
+  out <- suppressWarnings(as.integer(as.character(x)))
+  out <- ifelse(is.na(out), NA_character_, sprintf("%04d", out))
+  out
+}
+
+is_regular_season_shootout <- function(game_type_id, period_number) {
+  !is.na(game_type_id) & !is.na(period_number) &
+    game_type_id == 2L & period_number == 5L
+}
+
+is_penalty_shot_attempt <- function(situation_code, game_type_id, period_number) {
+  sc <- normalize_situation_code(situation_code)
+  !is.na(sc) & sc %in% c("0101", "1010") &
+    !is_regular_season_shootout(game_type_id, period_number)
+}
+
+normalize_output_strength_state <- function(strength_state, situation_code, game_type_id, period_number) {
+  out <- as.character(strength_state)
+  out[is.na(out) | stringr::str_trim(out) == ""] <- "even-strength"
+  out[is_penalty_shot_attempt(situation_code, game_type_id, period_number)] <- "even-strength"
+  out
+}
+
+score_dataset_key <- function(situation) {
+  dplyr::case_when(
+    situation == "ps" ~ "so",
+    TRUE ~ situation
+  )
+}
+
+factorize_logical_predictors <- function(data, exclude = "isGoal") {
+  logical_predictors <- setdiff(
+    names(data)[vapply(data, is.logical, logical(1))],
+    exclude
+  )
+
+  data %>%
+    dplyr::mutate(
+      dplyr::across(
+        dplyr::all_of(logical_predictors),
+        ~ factor(dplyr::if_else(.x, "yes", "no"), levels = c("no", "yes"))
+      )
+    )
+}
+
+prepare_current_training_frame <- function(data) {
+  data %>%
+    dplyr::mutate(
+      seasonStart = season_start_from_game_id(gameId),
+      isGoal = dplyr::if_else(isGoal, "goal", "no_goal"),
+      isGoal = factor(isGoal, levels = c("no_goal", "goal"))
+    ) %>%
+    factorize_logical_predictors()
+}
+
+prepare_current_scoring_frame <- function(data) {
+  data %>%
+    dplyr::mutate(seasonStart = season_start_from_game_id(gameId)) %>%
+    factorize_logical_predictors()
+}
+
+prepare_legacy_training_frame <- function(data) {
+  data %>%
+    dplyr::mutate(
+      season = season_id_from_game_id(gameId),
+      isGoal = dplyr::if_else(isGoal, "goal", "no_goal"),
+      isGoal = factor(isGoal, levels = c("no_goal", "goal"))
+    ) %>%
+    factorize_logical_predictors()
+}
+
+prepare_legacy_scoring_frame <- function(data) {
+  data %>%
+    dplyr::mutate(season = season_id_from_game_id(gameId)) %>%
+    factorize_logical_predictors()
+}
+
+load_current_training_csv <- function(dataset) {
+  cached_read_csv(file.path("models", "xG", "data", paste0(dataset, "_train.csv")))
+}
+
+load_legacy_training_csv <- function(dataset, version = 1L) {
+  cached_read_csv(
+    file.path("models", "xG", "legacy", paste0(dataset, version, "_train.csv"))
+  )
+}
+
+load_saved_current_v3_models <- function() {
+  purrr::map(
+    CURRENT_V3_MODEL_KEYS,
+    ~ cached_read_rds(file.path("models", "xG", paste0(.x, ".rds")))
+  )
+}
+
+load_saved_legacy_models <- function(version) {
+  purrr::map(
+    XG_DATASETS,
+    ~ cached_read_rds(file.path("models", "xG", "legacy", paste0(.x, version, ".rds")))
+  ) %>%
+    rlang::set_names(XG_DATASETS)
+}
+
+load_current_best_params <- function(dataset) {
+  model_key <- CURRENT_V3_MODEL_KEYS[[dataset]]
+  cached_read_csv(file.path("models", "xG", "results", paste0(model_key, "_best_params.csv"))) %>%
+    dplyr::slice(1)
+}
+
+build_current_spec <- function(dataset, engine, best_params) {
+  if (engine == "xgboost") {
+    return(
+      parsnip::boost_tree(
+        mode = "classification",
+        trees = as.integer(best_params$trees[[1]]),
+        tree_depth = as.integer(best_params$tree_depth[[1]]),
+        learn_rate = as.numeric(best_params$learn_rate[[1]]),
+        min_n = as.integer(best_params$min_n[[1]]),
+        loss_reduction = as.numeric(best_params$loss_reduction[[1]]),
+        sample_size = as.numeric(best_params$sample_size[[1]]),
+        mtry = as.integer(best_params$mtry[[1]])
+      ) %>%
+        parsnip::set_engine(
+          "xgboost",
+          objective = "binary:logistic",
+          eval_metric = "logloss",
+          tree_method = "hist",
+          nthread = 1
+        )
+    )
+  }
+
+  parsnip::boost_tree(
+    mode = "classification",
+    trees = as.integer(best_params$trees[[1]]),
+    tree_depth = as.integer(best_params$tree_depth[[1]]),
+    learn_rate = as.numeric(best_params$learn_rate[[1]]),
+    min_n = as.integer(best_params$min_n[[1]]),
+    loss_reduction = as.numeric(best_params$loss_reduction[[1]]),
+    sample_size = as.numeric(best_params$sample_size[[1]]),
+    mtry = as.numeric(best_params$mtry[[1]])
+  ) %>%
+    parsnip::set_engine(
+      "lightgbm",
+      num_threads = 1,
+      verbose = -1,
+      counts = FALSE
+    )
+}
+
+fit_current_refit_model <- function(dataset, training_data) {
+  engine <- CURRENT_V3_ENGINES[[dataset]]
+  best_params <- load_current_best_params(dataset)
+  recipe <- if (engine == "xgboost") {
+    SBSS_CURRENT_XGB_ENV$build_recipe(training_data)
+  } else {
+    SBSS_CURRENT_LGB_ENV$build_recipe(training_data)
+  }
+
+  spec <- build_current_spec(dataset, engine, best_params)
+
+  workflows::workflow() %>%
+    workflows::add_recipe(recipe) %>%
+    workflows::add_model(spec) %>%
+    parsnip::fit(training_data)
+}
+
+fit_legacy_ridge_model <- function(training_data) {
+  recipe <- SBSS_LEGACY_ENV$build_recipe(training_data)
+
+  spec <- parsnip::logistic_reg(
+    mode = "classification",
+    penalty = tune::tune(),
+    mixture = 0
+  ) %>%
+    parsnip::set_engine("glmnet")
+
+  workflow <- workflows::workflow() %>%
+    workflows::add_recipe(recipe) %>%
+    workflows::add_model(spec)
+
+  fold_count <- max(
+    2L,
+    min(SBSS_LEGACY_ENV$N_FOLDS, dplyr::n_distinct(training_data$gameId))
+  )
+  resamples <- rsample::group_vfold_cv(
+    training_data,
+    group = gameId,
+    v = fold_count,
+    balance = "observations"
+  )
+  metrics <- yardstick::metric_set(
+    yardstick::mn_log_loss,
+    SBSS_LEGACY_ENV$goal_roc_auc,
+    SBSS_LEGACY_ENV$goal_pr_auc,
+    yardstick::brier_class
+  )
+
+  cluster_state <- SBSS_LEGACY_ENV$create_cluster()
+  on.exit(SBSS_LEGACY_ENV$stop_cluster(cluster_state), add = TRUE)
+
+  current_penalty_range <- SBSS_LEGACY_ENV$PENALTY_RANGE
+  expansion_count <- 0L
+
+  repeat {
+    penalty_param <- dials::penalty(range = current_penalty_range)
+    tuning_grid <- dials::grid_regular(penalty_param, levels = SBSS_LEGACY_ENV$GRID_LEVELS)
+
+    tuned <- tune::tune_grid(
+      workflow,
+      resamples = resamples,
+      grid = tuning_grid,
+      metrics = metrics,
+      control = tune::control_grid(
+        verbose = FALSE,
+        allow_par = cluster_state$n_workers > 1L,
+        parallel_over = "resamples",
+        save_pred = FALSE
+      )
+    )
+
+    best_params <- tune::select_best(tuned, metric = "mn_log_loss")
+    boundary_hit <- SBSS_LEGACY_ENV$penalty_boundary_hit(
+      best_params,
+      current_penalty_range
+    )
+
+    if (!is.na(boundary_hit) &&
+      boundary_hit == "lower" &&
+      current_penalty_range[[1]] <= SBSS_LEGACY_ENV$LOWER_BOUND_ACCEPT_LOG10) {
+      break
+    }
+
+    if (is.na(boundary_hit)) {
+      break
+    }
+
+    expansion_count <- expansion_count + 1L
+
+    if (expansion_count > SBSS_LEGACY_ENV$MAX_PENALTY_EXPANSIONS) {
+      stop("Legacy ridge penalty kept hitting the search boundary.")
+    }
+
+    current_penalty_range <- SBSS_LEGACY_ENV$expand_penalty_range(
+      current_penalty_range,
+      boundary_hit
+    )
+  }
+
+  workflows::workflow() %>%
+    workflows::add_recipe(recipe) %>%
+    workflows::add_model(spec) %>%
+    tune::finalize_workflow(best_params) %>%
+    parsnip::fit(training_data)
+}
+
+score_partition_frames <- function(partitions, models, model_family) {
+  purrr::imap_dfr(
+    partitions,
+    function(data, dataset) {
+      if (nrow(data) == 0L) {
+        return(tibble::tibble())
+      }
+
+      scoring_data <- if (model_family == "legacy") {
+        prepare_legacy_scoring_frame(data)
+      } else {
+        prepare_current_scoring_frame(data)
+      }
+
+      preds <- predict(models[[dataset]], new_data = scoring_data, type = "prob")
+
+      tibble::tibble(
+        gameId = as.integer(data$gameId),
+        eventId = as.integer(data$eventId),
+        xG = as.numeric(preds$.pred_goal)
+      )
+    }
+  )
+}
+
+make_game_parts <- function(data, n_parts = SBSS_PARTS) {
+  games <- data %>%
+    dplyr::distinct(gameId) %>%
+    dplyr::arrange(gameId)
+
+  if (nrow(games) == 0L) {
+    return(games %>% dplyr::mutate(part = integer()))
+  }
+
+  games %>%
+    dplyr::mutate(part = dplyr::ntile(dplyr::row_number(), n_parts))
+}
+
+score_legacy_saved <- function(eligible_attempts, version) {
+  partitions <- build_xg_partitions(eligible_attempts)
+  models <- load_saved_legacy_models(version)
+  score_partition_frames(partitions, models, model_family = "legacy")
+}
+
+score_current_saved_v3 <- function(eligible_attempts) {
+  partitions <- build_xg_partitions(eligible_attempts)
+  models <- load_saved_current_v3_models()
+  score_partition_frames(partitions, models, model_family = "current")
+}
+
+score_legacy_crossfit <- function(eligible_attempts, season_id) {
+  parts_tbl <- make_game_parts(eligible_attempts)
+  eligible_attempts <- eligible_attempts %>%
+    dplyr::left_join(parts_tbl, by = "gameId")
+
+  other_season <- setdiff(LEGACY_V1_PAIR, season_id)
+
+  purrr::map_dfr(
+    sort(unique(parts_tbl$part)),
+    function(part_id) {
+      cat(sprintf("legacy crossfit %s part %d/%d\n", season_id, part_id, SBSS_PARTS))
+      flush.console()
+
+      holdout <- eligible_attempts %>%
+        dplyr::filter(part == part_id)
+
+      if (nrow(holdout) == 0L) {
+        return(tibble::tibble())
+      }
+
+      holdout_games <- sort(unique(holdout$gameId))
+      holdout_partitions <- build_xg_partitions(holdout)
+      needed_datasets <- names(holdout_partitions)[
+        vapply(holdout_partitions, nrow, integer(1)) > 0L
+      ]
+
+      purrr::map_dfr(
+        needed_datasets,
+        function(dataset) {
+          cat(sprintf("  fitting legacy dataset %s\n", dataset))
+          flush.console()
+
+          raw_training <- load_legacy_training_csv(dataset, version = 1L) %>%
+            dplyr::mutate(season = season_id_from_game_id(gameId)) %>%
+            dplyr::filter(
+              season == other_season |
+                !(season == season_id & gameId %in% holdout_games)
+            ) %>%
+            dplyr::select(-season)
+
+          model <- fit_legacy_ridge_model(
+            prepare_legacy_training_frame(raw_training)
+          )
+          partition_data <- holdout_partitions[[dataset]]
+          preds <- predict(
+            model,
+            new_data = prepare_legacy_scoring_frame(partition_data),
+            type = "prob"
+          )
+
+          tibble::tibble(
+            gameId = as.integer(partition_data$gameId),
+            eventId = as.integer(partition_data$eventId),
+            xG = as.numeric(preds$.pred_goal)
+          )
+        }
+      )
+    }
+  )
+}
+
+score_current_crossfit_v3 <- function(eligible_attempts, season_id) {
+  parts_tbl <- make_game_parts(eligible_attempts)
+  eligible_attempts <- eligible_attempts %>%
+    dplyr::left_join(parts_tbl, by = "gameId")
+
+  season_start <- season_start_from_season_id(season_id)
+  other_start <- setdiff(season_start_from_season_id(CURRENT_V3_PAIR), season_start)
+
+  purrr::map_dfr(
+    sort(unique(parts_tbl$part)),
+    function(part_id) {
+      cat(sprintf("current v3 crossfit %s part %d/%d\n", season_id, part_id, SBSS_PARTS))
+      flush.console()
+
+      holdout <- eligible_attempts %>%
+        dplyr::filter(part == part_id)
+
+      if (nrow(holdout) == 0L) {
+        return(tibble::tibble())
+      }
+
+      holdout_games <- sort(unique(holdout$gameId))
+      holdout_partitions <- build_xg_partitions(holdout)
+      needed_datasets <- names(holdout_partitions)[
+        vapply(holdout_partitions, nrow, integer(1)) > 0L
+      ]
+
+      purrr::map_dfr(
+        needed_datasets,
+        function(dataset) {
+          cat(sprintf("  refitting current dataset %s\n", dataset))
+          flush.console()
+
+          raw_training <- load_current_training_csv(dataset) %>%
+            dplyr::mutate(seasonStart = season_start_from_game_id(gameId)) %>%
+            dplyr::filter(
+              seasonStart == other_start |
+                !(seasonStart == season_start & gameId %in% holdout_games)
+            ) %>%
+            dplyr::select(-seasonStart)
+
+          model <- fit_current_refit_model(
+            dataset,
+            prepare_current_training_frame(raw_training)
+          )
+          partition_data <- holdout_partitions[[dataset]]
+          preds <- predict(
+            model,
+            new_data = prepare_current_scoring_frame(partition_data),
+            type = "prob"
+          )
+
+          tibble::tibble(
+            gameId = as.integer(partition_data$gameId),
+            eventId = as.integer(partition_data$eventId),
+            xG = as.numeric(preds$.pred_goal)
+          )
+        }
+      )
+    }
+  )
+}
+
+score_season_xg <- function(eligible_attempts, season_id) {
+  if (nrow(eligible_attempts) == 0L) {
+    return(tibble::tibble(gameId = integer(), eventId = integer(), xG = double()))
+  }
+
+  if (season_id %in% LEGACY_V1_PAIR) {
+    return(score_legacy_crossfit(eligible_attempts, season_id))
+  }
+
+  if (season_id >= 20122013L && season_id <= 20172018L) {
+    return(score_legacy_saved(eligible_attempts, version = 1L))
+  }
+
+  if (season_id >= 20182019L && season_id <= 20222023L) {
+    return(score_legacy_saved(eligible_attempts, version = 2L))
+  }
+
+  if (season_id %in% CURRENT_V3_PAIR) {
+    return(score_current_crossfit_v3(eligible_attempts, season_id))
+  }
+
+  if (season_id == 20252026L) {
+    return(score_current_saved_v3(eligible_attempts))
+  }
+
+  stop(sprintf("Unsupported sbss season: %s", season_id))
+}
+
+prepare_sbss_shot_attempts <- function(season_id) {
+  pbps <- load_xg_season(season_id)
+  pbps <- normalize_xg_pbp_schema(pbps)
+
+  goalie_ids <- pbps %>%
+    dplyr::distinct(goaliePlayerIdAgainst) %>%
+    dplyr::filter(!is.na(goaliePlayerIdAgainst)) %>%
+    dplyr::pull(goaliePlayerIdAgainst) %>%
+    as.integer()
+
+  prev_events <- pbps %>%
+    dplyr::transmute(
+      gameId,
+      eventId,
+      typeDescKeyPrevRaw = eventTypeDescKey,
+      reasonPrev = reason,
+      shotTypePrev = shotType,
+      eventOwnerTeamIdPrev = eventOwnerTeamId
+    )
+
+  attempts <- pbps %>%
+    dplyr::filter(
+      gameTypeId %in% 2:3,
+      !(eventTypeDescKey == "missed-shot" & reason == "short"),
+      eventTypeDescKey %in% c("goal", "shot-on-goal", "missed-shot", "blocked-shot")
+    ) %>%
+    dplyr::left_join(
+      prev_events,
+      by = c("gameId", "eventIdPrev" = "eventId")
+    ) %>%
+    add_shift_list_columns() %>%
+    dplyr::mutate(
+      situationCode = normalize_situation_code(situationCode),
+      periodType = as.character(periodType),
+      isEmptyNetFor = dplyr::coalesce(isEmptyNetFor, FALSE),
+      isEmptyNetAgainst = dplyr::coalesce(isEmptyNetAgainst, FALSE),
+      shootingPlayerId = dplyr::coalesce(shootingPlayerId, scoringPlayerId),
+      strengthStateOutput = normalize_output_strength_state(
+        strengthState,
+        situationCode,
+        gameTypeId,
+        periodNumber
+      ),
+      isShootout = is_regular_season_shootout(gameTypeId, periodNumber),
+      typeDescKeyPrev = make_type_desc_key_prev(
+        type_desc_key_prev = typeDescKeyPrevRaw,
+        reason_prev = reasonPrev,
+        shot_type_prev = shotTypePrev,
+        event_owner_team_id_prev = eventOwnerTeamIdPrev,
+        event_owner_team_id = eventOwnerTeamId
+      ),
+      is_ps = situationCode %in% c("1010", "0101"),
+      is_en = !is_ps & isEmptyNetAgainst,
+      is_sd_standard = (
+        !is_ps &
+          !is_en &
+          skaterCountFor == 5 &
+          skaterCountAgainst == 5 &
+          !isEmptyNetFor &
+          !isEmptyNetAgainst
+      ),
+      is_unclassifiable_strength = (
+        !is_ps &
+          !is_en &
+          (
+            is.na(situationCode) |
+              is.na(skaterCountFor) |
+              is.na(skaterCountAgainst) |
+              is.na(strengthState)
+          )
+      ),
+      is_sd = dplyr::coalesce(is_sd_standard, FALSE) |
+        dplyr::coalesce(is_unclassifiable_strength, FALSE),
+      is_ev = (
+        !is_ps &
+          !is_en &
+          skaterCountFor == skaterCountAgainst &
+          !is_sd
+      ),
+      is_pp = (
+        !is_ps &
+          !is_en &
+          skaterCountFor > skaterCountAgainst
+      ),
+      is_sh = (
+        !is_ps &
+          !is_en &
+          skaterCountFor < skaterCountAgainst
+      ),
+      is_ev = dplyr::coalesce(is_ev, FALSE),
+      is_pp = dplyr::coalesce(is_pp, FALSE),
+      is_sh = dplyr::coalesce(is_sh, FALSE),
+      n_situations = as.integer(is_ps) + as.integer(is_en) + as.integer(is_sd) +
+        as.integer(is_ev) + as.integer(is_pp) + as.integer(is_sh),
+      situation = dplyr::case_when(
+        is_ps ~ "ps",
+        is_en ~ "en",
+        is_sd ~ "sd",
+        is_ev ~ "ev",
+        is_pp ~ "pp",
+        is_sh ~ "sh",
+        TRUE ~ NA_character_
+      )
+    ) %>%
+    dplyr::filter(is.na(shootingPlayerId) | !(shootingPlayerId %in% goalie_ids))
+
+  required_shift_cols <- c(
+    "playerIdsFor",
+    "playerIdsAgainst",
+    "secondsElapsedInShiftFor",
+    "secondsElapsedInShiftAgainst",
+    "secondsElapsedInPeriodSinceLastShiftFor",
+    "secondsElapsedInPeriodSinceLastShiftAgainst",
+    "dYCoordNorm"
+  )
+
+  missing_shift_cols <- setdiff(required_shift_cols, names(attempts))
+  if (length(missing_shift_cols) > 0L) {
+    stop(
+      paste(
+        "Missing required sbss feature columns:",
+        paste(missing_shift_cols, collapse = ", ")
+      )
+    )
+  }
+
+  shift_elapsed_for_skater <- purrr::map2(
+    attempts$playerIdsFor,
+    attempts$secondsElapsedInShiftFor,
+    aligned_skater_values,
+    goalie_ids = goalie_ids
+  )
+
+  shift_elapsed_against_skater <- purrr::map2(
+    attempts$playerIdsAgainst,
+    attempts$secondsElapsedInShiftAgainst,
+    aligned_skater_values,
+    goalie_ids = goalie_ids
+  )
+
+  shift_rest_for_skater <- purrr::map2(
+    attempts$playerIdsFor,
+    attempts$secondsElapsedInPeriodSinceLastShiftFor,
+    aligned_skater_values,
+    goalie_ids = goalie_ids
+  )
+
+  shift_rest_against_skater <- purrr::map2(
+    attempts$playerIdsAgainst,
+    attempts$secondsElapsedInPeriodSinceLastShiftAgainst,
+    aligned_skater_values,
+    goalie_ids = goalie_ids
+  )
+
+  attempts <- attempts %>%
+    dplyr::mutate(
+      isGoal = eventTypeDescKey == "goal",
+      isPlayoff = gameTypeId == 3,
+      isOvertime = periodType == "OT",
+      isBehindNet = is_behind_net(xCoordNorm),
+      crossedRoyalRoad = is_royal_road(yCoordNorm, dYCoordNorm),
+      minSecondsElapsedInShiftFor = purrr::map_dbl(shift_elapsed_for_skater, safe_min_numeric),
+      maxSecondsElapsedInShiftFor = purrr::map_dbl(shift_elapsed_for_skater, safe_max_numeric),
+      avgSecondsElapsedInShiftFor = purrr::map_dbl(shift_elapsed_for_skater, safe_mean_numeric),
+      minSecondsElapsedInShiftAgainst = purrr::map_dbl(shift_elapsed_against_skater, safe_min_numeric),
+      maxSecondsElapsedInShiftAgainst = purrr::map_dbl(shift_elapsed_against_skater, safe_max_numeric),
+      avgSecondsElapsedInShiftAgainst = purrr::map_dbl(shift_elapsed_against_skater, safe_mean_numeric),
+      minSecondsElapsedSinceLastShiftFor = purrr::map_dbl(shift_rest_for_skater, safe_min_numeric),
+      maxSecondsElapsedSinceLastShiftFor = purrr::map_dbl(shift_rest_for_skater, safe_max_numeric),
+      avgSecondsElapsedSinceLastShiftFor = purrr::map_dbl(shift_rest_for_skater, safe_mean_numeric),
+      minSecondsElapsedSinceLastShiftAgainst = purrr::map_dbl(shift_rest_against_skater, safe_min_numeric),
+      maxSecondsElapsedSinceLastShiftAgainst = purrr::map_dbl(shift_rest_against_skater, safe_max_numeric),
+      avgSecondsElapsedSinceLastShiftAgainst = purrr::map_dbl(shift_rest_against_skater, safe_mean_numeric),
+      shooterSecondsElapsedInShift = purrr::pmap_dbl(
+        list(playerIdsFor, secondsElapsedInShiftFor, shootingPlayerId),
+        extract_aligned_player_value
+      ),
+      shooterSecondsElapsedSinceLastShift = purrr::pmap_dbl(
+        list(
+          playerIdsFor,
+          secondsElapsedInPeriodSinceLastShiftFor,
+          shootingPlayerId
+        ),
+        extract_aligned_player_value
+      ),
+      isCorsi = eventTypeDescKey %in% c("blocked-shot", "missed-shot", "shot-on-goal", "goal"),
+      isFenwick = eventTypeDescKey %in% c("missed-shot", "shot-on-goal", "goal"),
+      isShot = eventTypeDescKey %in% c("shot-on-goal", "goal")
+    )
+
+  if (any(attempts$n_situations != 1, na.rm = TRUE) || any(is.na(attempts$n_situations))) {
+    print(attempts %>% dplyr::count(n_situations, sort = TRUE))
+    stop("sbss situation definitions are not mutually exclusive and collectively exhaustive.")
+  }
+
+  attempts
+}
+
+build_scored_shot_attempts <- function(season_id) {
+  attempts <- prepare_sbss_shot_attempts(season_id) %>%
+    dplyr::filter(!isShootout)
+  eligible_attempts <- attempts %>%
+    dplyr::filter(isFenwick)
+
+  xg_predictions <- score_season_xg(eligible_attempts, season_id) %>%
+    dplyr::distinct(gameId, eventId, .keep_all = TRUE) %>%
+    dplyr::rename(predictedXG = xG)
+
+  scored <- attempts %>%
+    dplyr::left_join(xg_predictions, by = c("gameId", "eventId"))
+
+  missing_fenwick <- scored %>%
+    dplyr::filter(isFenwick, is.na(predictedXG))
+
+  if (nrow(missing_fenwick) > 0L) {
+    stop("Missing xG predictions for one or more fenwick sbss rows.")
+  }
+
+  scored %>%
+    dplyr::mutate(
+      xG = dplyr::if_else(isFenwick, predictedXG, 0),
+      xG = as.numeric(xG)
+    ) %>%
+    dplyr::select(-predictedXG)
+}
+
+build_skater_sbss <- function(scored_attempts) {
+  scored_attempts %>%
+    dplyr::filter(!is.na(shootingPlayerId)) %>%
+    dplyr::transmute(
+      shooterPlayerId = as.integer(shootingPlayerId),
+      gameId = as.integer(gameId),
+      eventId = as.integer(eventId),
+      strengthState = as.character(strengthStateOutput),
+      xCoordNorm = as.numeric(xCoordNorm),
+      yCoordNorm = as.numeric(yCoordNorm),
+      isRush = as.logical(isRush),
+      isRebound = as.logical(isRebound),
+      isCorsi = as.logical(isCorsi),
+      isFenwick = as.logical(isFenwick),
+      isShot = as.logical(isShot),
+      isGoal = as.logical(isGoal),
+      xG = as.numeric(xG),
+      goaliePlayerId = as.integer(goaliePlayerIdAgainst)
+    ) %>%
+    dplyr::arrange(shooterPlayerId, gameId, eventId)
+}
+
+build_goalie_sbss <- function(scored_attempts) {
+  scored_attempts %>%
+    dplyr::filter(!is.na(goaliePlayerIdAgainst)) %>%
+    dplyr::transmute(
+      goaliePlayerId = as.integer(goaliePlayerIdAgainst),
+      gameId = as.integer(gameId),
+      eventId = as.integer(eventId),
+      strengthState = as.character(strengthStateOutput),
+      xCoordNorm = as.numeric(xCoordNorm),
+      yCoordNorm = as.numeric(yCoordNorm),
+      isRush = as.logical(isRush),
+      isRebound = as.logical(isRebound),
+      isCorsi = as.logical(isCorsi),
+      isFenwick = as.logical(isFenwick),
+      isShot = as.logical(isShot),
+      isGoal = as.logical(isGoal),
+      xG = as.numeric(xG),
+      shooterPlayerId = as.integer(shootingPlayerId)
+    ) %>%
+    dplyr::arrange(goaliePlayerId, gameId, eventId)
+}
+
+remove_stale_split_files <- function(split_dir, season_id) {
+  pattern <- paste0("_", season_id, "\\.csv$")
+  stale_files <- list.files(split_dir, pattern = pattern, full.names = TRUE)
+
+  if (length(stale_files) > 0L) {
+    invisible(file.remove(stale_files))
+  }
+}
+
+write_split_entity_files <- function(data, id_col, season_id, aggregate_path, split_dir) {
+  dir.create(dirname(aggregate_path), recursive = TRUE, showWarnings = FALSE)
+  dir.create(split_dir, recursive = TRUE, showWarnings = FALSE)
+
+  remove_stale_split_files(split_dir, season_id)
+  readr::write_csv(data, aggregate_path)
+
+  if (nrow(data) == 0L) {
+    return(invisible(NULL))
+  }
+
+  entity_ids <- sort(unique(data[[id_col]]))
+
+  for (entity_id in entity_ids) {
+    entity_path <- file.path(split_dir, paste0(entity_id, "_", season_id, ".csv"))
+    readr::write_csv(
+      data %>%
+        dplyr::filter(.data[[id_col]] == entity_id) %>%
+        dplyr::select(-dplyr::all_of(id_col)),
+      entity_path
+    )
+  }
+
+  invisible(NULL)
+}

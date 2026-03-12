@@ -1,0 +1,3 @@
+gameId,eventId,strengthState,xCoordNorm,yCoordNorm,isRush,isRebound,isCorsi,isFenwick,isShot,isGoal,xG,goaliePlayerId
+2013021221,32,even-strength,77,4,FALSE,FALSE,TRUE,TRUE,TRUE,FALSE,0.1424138694673238,8455710
+2013021221,300,even-strength,61,3,FALSE,FALSE,TRUE,TRUE,TRUE,FALSE,0.10068818005597906,8455710

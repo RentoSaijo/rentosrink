@@ -10,7 +10,8 @@ __pycache__/
 .devcontainer
 *.parquet
 models/xG/data/
-models/xG/results/
 data/gbgs/basic/skaters_*.csv
 data/gbgs/basic/goalies_*.csv
 data/gbgs/basic/teams_*.csv
+data/sbss/skaters_*.csv
+data/sbss/goalies_*.csv

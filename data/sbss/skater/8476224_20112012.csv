@@ -1,0 +1,2 @@
+gameId,eventId,strengthState,xCoordNorm,yCoordNorm,isRush,isRebound,isCorsi,isFenwick,isShot,isGoal,xG,goaliePlayerId
+2011021226,727,power-play,38,33,FALSE,FALSE,TRUE,TRUE,TRUE,FALSE,0.023787654970591265,8469608
