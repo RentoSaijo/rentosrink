@@ -23,6 +23,7 @@ Aggregate files keep the entity ID column. Split files drop it because it is alr
 - `gameTypeId` is not written to the GBG outputs because it is inferable from `gameId`.
 - Regular-season shootout events are excluded from all event counts. Concretely, `gameTypeId == 2` and `period == 5` is removed before aggregation.
 - Penalty shots are still counted.
+- Rows with missing or unrecognized `strengthState` / `situationCode` default to even strength before aggregation.
 - Non-shootout penalty-shot situation codes `0101` and `1010` are forced into even strength before aggregation.
 - Missed shots with `reason == "short"` are excluded from all shot-attempt-derived metrics because they are treated as non-attempts.
 - Strength is taken from the situation-code-derived `strengthState` field, not inferred from the number of populated on-ice player slots.

@@ -43,6 +43,7 @@ derive_strength_state <- function(strength_state, situation_code, game_type_id, 
   sc <- normalize_situation_code(situation_code)
   is_shootout <- !is.na(game_type_id) & !is.na(period_number) & game_type_id == 2L & period_number == 5L
   is_penalty_shot <- !is.na(sc) & sc %in% c("0101", "1010") & !is_shootout
+  out[is.na(out)] <- "ev"
   out[is_penalty_shot] <- "ev"
   out
 }

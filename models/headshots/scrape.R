@@ -2,7 +2,7 @@
 suppressMessages(library(nhlscraper))
 
 # Define constants.
-START_SEASON <- 20112012
+START_SEASON <- 20102011
 END_SEASON   <- 20252026
 
 # Loop through seasons.
@@ -17,7 +17,7 @@ seen_out_paths <- new.env(parent = emptyenv())
 for (SEASON in SEASONS) {
   teamTriCodes <- nhlscraper::standings(paste0(
     SEASON %% 1e4, '-01-01'
-  ))$teamAbbrev.default
+  ))$teamTriCode
 
   # Collect headshot URLs for this season.
   headshots <- c()

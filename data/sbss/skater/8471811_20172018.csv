@@ -1,0 +1,2 @@
+gameId,eventId,strengthState,xCoordNorm,yCoordNorm,isRush,isRebound,isCorsi,isFenwick,isShot,isGoal,xG,goaliePlayerId
+2017020120,28,penalty-kill,52,-29,FALSE,FALSE,TRUE,TRUE,TRUE,FALSE,0.04523941145470624,8469608

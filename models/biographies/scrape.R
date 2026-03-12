@@ -4,7 +4,7 @@ suppressMessages(library(stringr))
 suppressMessages(library(nhlscraper))
 
 # Define constants.
-START_SEASON <- 20112012
+START_SEASON <- 20102011
 END_SEASON   <- 20252026
 
 # Get season IDs.
@@ -34,21 +34,21 @@ rm(gameTypeId, gameTypeIds, seasonId, seasonIds)
 biographies <- nhlscraper::players() %>% 
   dplyr::filter(playerId %in% playerIds) %>% 
   dplyr::mutate(
-    handCode = shootsCatches,
+    handCode,
     positionCode,
     number   = sweaterNumber,
     teamId   = lastNHLTeamId
   ) %>% 
-  dplyr::group_by(fullName) %>%
+  dplyr::group_by(playerFullName) %>%
   dplyr::arrange(playerId, .by_group = TRUE) %>%
-  dplyr::mutate(menuName = if (n() == 1) fullName else stringr::str_c(
-    fullName, ' ', dplyr::row_number()
+  dplyr::mutate(playerMenuName = if (n() == 1) playerFullName else stringr::str_c(
+    playerFullName, ' ', dplyr::row_number()
   )) %>%
   dplyr::ungroup() %>% 
   dplyr::select(
     playerId,
-    fullName,
-    menuName,
+    playerFullName,
+    playerMenuName,
     nationality,
     birthDate,
     height,
