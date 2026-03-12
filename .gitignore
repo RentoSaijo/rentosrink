@@ -3,11 +3,13 @@
 .RData
 .Ruserdata
 .DS_Store
-models/xG/data/
-models/xG/results/
-models/xG/nhlscraper/
 __pycache__/
 *.pyc
 .idea
 .devcontainer
 *.parquet
+models/xG/data/
+models/xG/results/
+data/gbgs/basic/skaters_*.csv
+data/gbgs/basic/goalies_*.csv
+data/gbgs/basic/teams_*.csv
