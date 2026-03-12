@@ -3,11 +3,10 @@ suppressPackageStartupMessages(library(tidyverse))
 season_env <- Sys.getenv("SEASON", unset = "20252026")
 SEASON <- as.integer(season_env)
 
-source(file.path("models", "sbss", "shared.R"))
+source(file.path("scripts", "sbss", "shared.R"))
 
 cat("Building scored shot attempts for skaters...\n")
-scored_attempts <- build_scored_shot_attempts(SEASON)
-skaters <- build_skater_sbss(scored_attempts)
+skaters <- rebuild_skater_sbss_from_existing(SEASON)
 
 aggregate_path <- file.path("data", "sbss", paste0("skaters_", SEASON, ".csv"))
 split_dir <- file.path("data", "sbss", "skater")

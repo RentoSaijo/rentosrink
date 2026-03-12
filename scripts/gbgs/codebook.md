@@ -1,12 +1,17 @@
-# GBG Basic Codebook
+# GBG Codebook
 
-This document describes the basic game-by-game (GBG) datasets built by:
+This document describes the game-by-game (GBG) datasets built by:
 
-- [skater_basic.R](/Users/rsai_91/Desktop/Work/rentosrink/models/gbgs/skater_basic.R)
-- [goalie_basic.R](/Users/rsai_91/Desktop/Work/rentosrink/models/gbgs/goalie_basic.R)
-- [team_basic.R](/Users/rsai_91/Desktop/Work/rentosrink/models/gbgs/team_basic.R)
+- [skater_basic.R](/Users/rsai_91/Desktop/Work/rentosrink/scripts/gbgs/skater_basic.R)
+- [goalie_basic.R](/Users/rsai_91/Desktop/Work/rentosrink/scripts/gbgs/goalie_basic.R)
+- [team_basic.R](/Users/rsai_91/Desktop/Work/rentosrink/scripts/gbgs/team_basic.R)
+- [skater_advanced.R](/Users/rsai_91/Desktop/Work/rentosrink/scripts/gbgs/skater_advanced.R)
+- [goalie_advanced.R](/Users/rsai_91/Desktop/Work/rentosrink/scripts/gbgs/goalie_advanced.R)
+- [team_advanced.R](/Users/rsai_91/Desktop/Work/rentosrink/scripts/gbgs/team_advanced.R)
 
 ## File Layout
+
+### Basic
 
 - Skaters aggregate: `data/gbgs/basic/skaters_{seasonId}.csv`
 - Skaters split: `data/gbgs/basic/skater/{playerId}_{seasonId}.csv`
@@ -14,6 +19,15 @@ This document describes the basic game-by-game (GBG) datasets built by:
 - Goalies split: `data/gbgs/basic/goalie/{playerId}_{seasonId}.csv`
 - Teams aggregate: `data/gbgs/basic/teams_{seasonId}.csv`
 - Teams split: `data/gbgs/basic/team/{teamId}_{seasonId}.csv`
+
+### Advanced
+
+- Skaters aggregate: `data/gbgs/advanced/skaters_{seasonId}.csv`
+- Skaters split: `data/gbgs/advanced/skater/{playerId}_{seasonId}.csv`
+- Goalies aggregate: `data/gbgs/advanced/goalies_{seasonId}.csv`
+- Goalies split: `data/gbgs/advanced/goalie/{playerId}_{seasonId}.csv`
+- Teams aggregate: `data/gbgs/advanced/teams_{seasonId}.csv`
+- Teams split: `data/gbgs/advanced/team/{teamId}_{seasonId}.csv`
 
 Aggregate files keep the entity ID column. Split files drop it because it is already encoded in the filename.
 
@@ -208,3 +222,61 @@ Metrics:
 - `rgA_pp`: goalie rebounds generated against on the penalty kill.
 - `RSF_ev`: team rush chances for at even strength.
 - `RCA_pp`: team rebounds created against on the penalty kill.
+
+## Advanced GBG
+
+### Advanced General Rules
+
+- Advanced GBGs are game-by-game expected-goal summaries built from the SBS/xG pipeline.
+- Strength suffixes use the same three-state convention as the basic GBGs:
+  - `_ev`: even strength
+  - `_pp`: power play
+  - `_sh`: short-handed / penalty kill
+- Advanced scripts use the season SBS files in `data/sbss` as the primary `xG` source.
+- Skater advanced GBGs also join lightweight attempt context from [shared.R](/Users/rsai_91/Desktop/Work/rentosrink/scripts/sbss/shared.R), because the current SBS exports still do not retain on-ice skater lists, which are required for `oxGF` and `oxGA`.
+- Regular-season shootouts are excluded before aggregation.
+- Non-shootout penalty shots are stored as even strength.
+- Rows with missing or blank `strengthState` default to even strength before aggregation.
+- Advanced outputs are based on the corresponding basic GBG files as the row base, so entities still receive one row for every game in which they appeared, even if all advanced metrics are zero.
+
+### Skater Advanced GBG
+
+Identifier columns:
+
+- `playerId`: skater ID. Present only in the aggregate skater file.
+- `gameId`: NHL game ID.
+
+Metrics:
+
+- `ixGF`: individual expected goals for. Sum of `xG` on shot attempts taken by the skater.
+- `oxGF`: on-ice expected goals for. Sum of `xG` on shot attempts by the skater's team while the skater was on the ice.
+- `oxGA`: on-ice expected goals against. Sum of `xG` on shot attempts by the opposition while the skater was on the ice.
+
+All skater advanced event columns use the form `{metric}_{strength}`.
+
+### Goalie Advanced GBG
+
+Identifier columns:
+
+- `playerId`: goalie ID. Present only in the aggregate goalie file.
+- `gameId`: NHL game ID.
+
+Metrics:
+
+- `xGA`: expected goals against. Sum of `xG` on shot attempts faced by the goalie.
+
+All goalie advanced event columns use the form `{metric}_{strength}`.
+
+### Team Advanced GBG
+
+Identifier columns:
+
+- `teamId`: team ID. Present only in the aggregate team file.
+- `gameId`: NHL game ID.
+
+Metrics:
+
+- `xGF`: team expected goals for. Sum of `xG` on the team's shot attempts.
+- `xGA`: team expected goals against. Sum of `xG` on the opposition's shot attempts.
+
+All team advanced event columns use the form `{metric}_{strength}`.

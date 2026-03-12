@@ -2,9 +2,9 @@
 
 This document describes the shot-by-shot (SBSS) datasets built by:
 
-- [skater.R](/Users/rsai_91/Desktop/Work/rentosrink/models/sbss/skater.R)
-- [goalie.R](/Users/rsai_91/Desktop/Work/rentosrink/models/sbss/goalie.R)
-- [shared.R](/Users/rsai_91/Desktop/Work/rentosrink/models/sbss/shared.R)
+- [skater.R](/Users/rsai_91/Desktop/Work/rentosrink/scripts/sbss/skater.R)
+- [goalie.R](/Users/rsai_91/Desktop/Work/rentosrink/scripts/sbss/goalie.R)
+- [shared.R](/Users/rsai_91/Desktop/Work/rentosrink/scripts/sbss/shared.R)
 
 The SBSS pipeline is intentionally tied to the six-partition xG system in:
 
@@ -69,6 +69,8 @@ Aggregate file columns:
 - `isGoal`
 - `xG`
 - `goaliePlayerId`
+- `goalieTeamId`
+- `shooterTeamId`
 
 Split files use the same columns except `shooterPlayerId`.
 
@@ -90,6 +92,8 @@ Aggregate file columns:
 - `isGoal`
 - `xG`
 - `shooterPlayerId`
+- `shooterTeamId`
+- `goalieTeamId`
 
 Split files use the same columns except `goaliePlayerId`.
 

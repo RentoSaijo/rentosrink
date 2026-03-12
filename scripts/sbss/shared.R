@@ -759,7 +759,143 @@ build_scored_shot_attempts <- function(season_id) {
     dplyr::select(-predictedXG)
 }
 
+build_goalie_team_lookup <- function(scored_attempts) {
+  if (nrow(scored_attempts) == 0L) {
+    return(tibble::tibble(
+      gameId = integer(),
+      goaliePlayerId = integer(),
+      goalieTeamId = integer()
+    ))
+  }
+
+  games_lookup <- nhlscraper::games() %>%
+    dplyr::filter(gameId %in% unique(as.integer(scored_attempts$gameId))) %>%
+    dplyr::transmute(
+      gameId = as.integer(gameId),
+      homeTeamId = as.integer(homeTeamId),
+      visitingTeamId = as.integer(visitingTeamId)
+    )
+
+  dplyr::bind_rows(
+    scored_attempts %>%
+      dplyr::transmute(
+        gameId = as.integer(gameId),
+        goaliePlayerId = as.integer(homeGoaliePlayerId)
+      ) %>%
+      dplyr::filter(!is.na(goaliePlayerId)) %>%
+      dplyr::distinct() %>%
+      dplyr::left_join(games_lookup, by = "gameId") %>%
+      dplyr::transmute(gameId, goaliePlayerId, goalieTeamId = homeTeamId),
+    scored_attempts %>%
+      dplyr::transmute(
+        gameId = as.integer(gameId),
+        goaliePlayerId = as.integer(awayGoaliePlayerId)
+      ) %>%
+      dplyr::filter(!is.na(goaliePlayerId)) %>%
+      dplyr::distinct() %>%
+      dplyr::left_join(games_lookup, by = "gameId") %>%
+      dplyr::transmute(gameId, goaliePlayerId, goalieTeamId = visitingTeamId)
+  ) %>%
+    dplyr::distinct(gameId, goaliePlayerId, .keep_all = TRUE)
+}
+
+rebuild_skater_sbss_from_existing <- function(season_id) {
+  existing_path <- file.path("data", "sbss", paste0("skaters_", season_id, ".csv"))
+  if (!file.exists(existing_path)) {
+    scored_attempts <- build_scored_shot_attempts(season_id)
+    return(build_skater_sbss(scored_attempts))
+  }
+
+  existing <- readr::read_csv(existing_path, show_col_types = FALSE)
+  attempts <- prepare_sbss_shot_attempts(season_id)
+  goalie_team_lookup <- build_goalie_team_lookup(attempts)
+
+  context <- attempts %>%
+    dplyr::filter(!is.na(shootingPlayerId)) %>%
+    dplyr::transmute(
+      shooterPlayerId = as.integer(shootingPlayerId),
+      gameId = as.integer(gameId),
+      eventId = as.integer(eventId),
+      goaliePlayerId = as.integer(goaliePlayerIdAgainst),
+      shooterTeamId = as.integer(eventOwnerTeamId)
+    ) %>%
+    dplyr::left_join(goalie_team_lookup, by = c("gameId", "goaliePlayerId")) %>%
+    dplyr::select(gameId, eventId, goaliePlayerId, goalieTeamId, shooterTeamId)
+
+  existing %>%
+    dplyr::select(-dplyr::any_of(c("goaliePlayerId", "goalieTeamId", "shooterTeamId"))) %>%
+    dplyr::left_join(context, by = c("gameId", "eventId")) %>%
+    dplyr::select(
+      shooterPlayerId,
+      gameId,
+      eventId,
+      strengthState,
+      xCoordNorm,
+      yCoordNorm,
+      isRush,
+      isRebound,
+      isCorsi,
+      isFenwick,
+      isShot,
+      isGoal,
+      xG,
+      goaliePlayerId,
+      goalieTeamId,
+      shooterTeamId
+    ) %>%
+    dplyr::arrange(shooterPlayerId, gameId, eventId)
+}
+
+rebuild_goalie_sbss_from_existing <- function(season_id) {
+  existing_path <- file.path("data", "sbss", paste0("goalies_", season_id, ".csv"))
+  if (!file.exists(existing_path)) {
+    scored_attempts <- build_scored_shot_attempts(season_id)
+    return(build_goalie_sbss(scored_attempts))
+  }
+
+  existing <- readr::read_csv(existing_path, show_col_types = FALSE)
+  attempts <- prepare_sbss_shot_attempts(season_id)
+  goalie_team_lookup <- build_goalie_team_lookup(attempts)
+
+  context <- attempts %>%
+    dplyr::filter(!is.na(goaliePlayerIdAgainst)) %>%
+    dplyr::transmute(
+      goaliePlayerId = as.integer(goaliePlayerIdAgainst),
+      gameId = as.integer(gameId),
+      eventId = as.integer(eventId),
+      shooterPlayerId = as.integer(shootingPlayerId),
+      shooterTeamId = as.integer(eventOwnerTeamId)
+    ) %>%
+    dplyr::left_join(goalie_team_lookup, by = c("gameId", "goaliePlayerId")) %>%
+    dplyr::select(gameId, eventId, shooterPlayerId, shooterTeamId, goalieTeamId)
+
+  existing %>%
+    dplyr::select(-dplyr::any_of(c("shooterPlayerId", "shooterTeamId", "goalieTeamId"))) %>%
+    dplyr::left_join(context, by = c("gameId", "eventId")) %>%
+    dplyr::select(
+      goaliePlayerId,
+      gameId,
+      eventId,
+      strengthState,
+      xCoordNorm,
+      yCoordNorm,
+      isRush,
+      isRebound,
+      isCorsi,
+      isFenwick,
+      isShot,
+      isGoal,
+      xG,
+      shooterPlayerId,
+      shooterTeamId,
+      goalieTeamId
+    ) %>%
+    dplyr::arrange(goaliePlayerId, gameId, eventId)
+}
+
 build_skater_sbss <- function(scored_attempts) {
+  goalie_team_lookup <- build_goalie_team_lookup(scored_attempts)
+
   scored_attempts %>%
     dplyr::filter(!is.na(shootingPlayerId)) %>%
     dplyr::transmute(
@@ -776,12 +912,34 @@ build_skater_sbss <- function(scored_attempts) {
       isShot = as.logical(isShot),
       isGoal = as.logical(isGoal),
       xG = as.numeric(xG),
-      goaliePlayerId = as.integer(goaliePlayerIdAgainst)
+      goaliePlayerId = as.integer(goaliePlayerIdAgainst),
+      shooterTeamId = as.integer(eventOwnerTeamId)
+    ) %>%
+    dplyr::left_join(goalie_team_lookup, by = c("gameId", "goaliePlayerId")) %>%
+    dplyr::select(
+      shooterPlayerId,
+      gameId,
+      eventId,
+      strengthState,
+      xCoordNorm,
+      yCoordNorm,
+      isRush,
+      isRebound,
+      isCorsi,
+      isFenwick,
+      isShot,
+      isGoal,
+      xG,
+      goaliePlayerId,
+      goalieTeamId,
+      shooterTeamId
     ) %>%
     dplyr::arrange(shooterPlayerId, gameId, eventId)
 }
 
 build_goalie_sbss <- function(scored_attempts) {
+  goalie_team_lookup <- build_goalie_team_lookup(scored_attempts)
+
   scored_attempts %>%
     dplyr::filter(!is.na(goaliePlayerIdAgainst)) %>%
     dplyr::transmute(
@@ -798,7 +956,27 @@ build_goalie_sbss <- function(scored_attempts) {
       isShot = as.logical(isShot),
       isGoal = as.logical(isGoal),
       xG = as.numeric(xG),
-      shooterPlayerId = as.integer(shootingPlayerId)
+      shooterPlayerId = as.integer(shootingPlayerId),
+      shooterTeamId = as.integer(eventOwnerTeamId)
+    ) %>%
+    dplyr::left_join(goalie_team_lookup, by = c("gameId", "goaliePlayerId")) %>%
+    dplyr::select(
+      goaliePlayerId,
+      gameId,
+      eventId,
+      strengthState,
+      xCoordNorm,
+      yCoordNorm,
+      isRush,
+      isRebound,
+      isCorsi,
+      isFenwick,
+      isShot,
+      isGoal,
+      xG,
+      shooterPlayerId,
+      shooterTeamId,
+      goalieTeamId
     ) %>%
     dplyr::arrange(goaliePlayerId, gameId, eventId)
 }
