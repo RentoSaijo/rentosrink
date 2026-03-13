@@ -556,7 +556,7 @@ contracts = load_skater_contracts().copy()
 bio['playerId'] = _to_num(bio.get('playerId'))
 bio = bio.dropna(subset=['playerId']).copy()
 bio['playerId'] = bio['playerId'].astype(int)
-bio['menuName'] = bio['menuName'].astype(str).str.strip()
+bio['menuName'] = bio.get('playerMenuName', bio.get('menuName', bio.get('playerFullName', ''))).astype(str).str.strip()
 
 contracts['playerId'] = _to_num(contracts.get('playerId'))
 contracts = contracts.dropna(subset=['playerId']).copy()
@@ -786,307 +786,310 @@ fig_sc = None
 c1, c2, c3 = st.columns(3, gap='small', vertical_alignment='top')
 
 with c1:
-    if dp.empty:
-        st.info('No contract possibility data available for this player.')
-    else:
-        dp_plot = dp.dropna(subset=['aav']).copy()
-        if dp_plot.empty:
+    with st.container(border=True):
+        if dp.empty:
             st.info('No contract possibility data available for this player.')
         else:
-            dp_plot['prob_clamped'] = dp_plot['prob'].clip(lower=0.0, upper=1.0).fillna(0.0)
-            dp_plot['msize'] = 10 + 30 * dp_plot['prob_clamped']
-            dp_plot['prob_txt'] = dp_plot['prob_clamped'].apply(lambda p: '' if pd.isna(p) else f'{p:.0%}')
+            dp_plot = dp.dropna(subset=['aav']).copy()
+            if dp_plot.empty:
+                st.info('No contract possibility data available for this player.')
+            else:
+                dp_plot['prob_clamped'] = dp_plot['prob'].clip(lower=0.0, upper=1.0).fillna(0.0)
+                dp_plot['msize'] = 10 + 30 * dp_plot['prob_clamped']
+                dp_plot['prob_txt'] = dp_plot['prob_clamped'].apply(lambda p: '' if pd.isna(p) else f'{p:.0%}')
 
-            fig_poss = go.Figure(
+                fig_poss = go.Figure(
+                    go.Scatter(
+                        x=dp_plot['term'],
+                        y=dp_plot['aav'],
+                        mode='lines+markers+text',
+                        line=dict(width=3),
+                        marker=dict(size=dp_plot['msize'], sizemode='diameter'),
+                        text=dp_plot['prob_txt'],
+                        textposition='top center',
+                        textfont=dict(size=13),
+                        hovertemplate='Term: %{x:.0f} yrs<br>Projected AAV: $%{y:,.0f}<br>Probability: %{text}<extra></extra>',
+                        showlegend=False,
+                        cliponaxis=False,
+                    )
+                )
+
+                fig_poss.update_layout(
+                    title=dict(text='Contract Possibilities', x=0.5, xanchor='center'),
+                    margin=dict(l=10, r=10, t=50, b=10),
+                    xaxis=dict(
+                        title='Term (years)',
+                        tickmode='linear',
+                        dtick=1,
+                        range=[0.5, float(dp_plot['term'].max()) + 0.5],
+                    ),
+                    yaxis=dict(title='Projected AAV', tickprefix='$'),
+                    height=PLOT_H,
+                )
+
+                fig_poss.update_xaxes(fixedrange=True)
+                fig_poss.update_yaxes(fixedrange=True)
+
+                st.plotly_chart(fig_poss, width='stretch', config={'displayModeBar': True})
+
+with c2:
+    with st.container(border=True):
+        hist_proj = hist_before.copy()
+        hist_proj = hist_proj.dropna(subset=['term', 'aav']).copy()
+        hist_proj = hist_proj.sort_values(['seasonId_end', 'number']).reset_index(drop=True)
+        hist_proj['contract_n'] = hist_proj.index + 1
+
+        if hist_proj.empty or pd.isna(likely_term) or pd.isna(likely_aav):
+            st.info('No historical/projection data available for contract projection chart.')
+        else:
+            last_n = int(hist_proj['contract_n'].iloc[-1])
+            proj_n = last_n + 1
+
+            term_range = _y_range(pd.concat([hist_proj['term'], pd.Series([likely_term])]), pad=1.0, lo=0.0)
+            aav_range = _y_range(pd.concat([hist_proj['aav'], pd.Series([likely_aav])]), pad=1_000_000.0, lo=0.0)
+
+            fig_combo = go.Figure()
+            term_color = '#636EFA'
+            aav_color = '#EF553B'
+            last_term = float(hist_proj['term'].iloc[-1])
+            last_aav = float(hist_proj['aav'].iloc[-1])
+
+            fig_combo.add_trace(
                 go.Scatter(
-                    x=dp_plot['term'],
-                    y=dp_plot['aav'],
-                    mode='lines+markers+text',
-                    line=dict(width=3),
-                    marker=dict(size=dp_plot['msize'], sizemode='diameter'),
-                    text=dp_plot['prob_txt'],
-                    textposition='top center',
-                    textfont=dict(size=13),
-                    hovertemplate='Term: %{x:.0f} yrs<br>Projected AAV: $%{y:,.0f}<br>Probability: %{text}<extra></extra>',
-                    showlegend=False,
-                    cliponaxis=False,
+                    x=hist_proj['contract_n'],
+                    y=hist_proj['term'],
+                    mode='lines+markers',
+                    line=dict(width=3, color=term_color),
+                    marker=dict(size=7, color=term_color),
+                    yaxis='y',
+                    name='Term',
+                    hoverinfo='skip',
                 )
             )
 
-            fig_poss.update_layout(
-                title=dict(text='Contract Possibilities', x=0.5, xanchor='center'),
-                margin=dict(l=10, r=10, t=50, b=10),
+            fig_combo.add_trace(
+                go.Scatter(
+                    x=hist_proj['contract_n'],
+                    y=hist_proj['aav'],
+                    mode='lines+markers',
+                    line=dict(width=3, color=aav_color),
+                    marker=dict(size=7, color=aav_color),
+                    yaxis='y2',
+                    name='AAV',
+                    hoverinfo='skip',
+                )
+            )
+
+            # Dashed projection segments are drawn as shapes so they do not add duplicate
+            # hover rows at the crossover contract.
+            fig_combo.add_shape(
+                type='line',
+                xref='x',
+                yref='y',
+                x0=last_n,
+                y0=last_term,
+                x1=proj_n,
+                y1=float(likely_term),
+                line=dict(color=term_color, width=3, dash='dot'),
+            )
+
+            fig_combo.add_shape(
+                type='line',
+                xref='x',
+                yref='y2',
+                x0=last_n,
+                y0=last_aav,
+                x1=proj_n,
+                y1=float(likely_aav),
+                line=dict(color=aav_color, width=3, dash='dot'),
+            )
+
+            fig_combo.add_trace(
+                go.Scatter(
+                    x=[proj_n],
+                    y=[float(likely_term)],
+                    mode='markers',
+                    marker=dict(size=8, color=term_color),
+                    yaxis='y',
+                    showlegend=False,
+                    hoverinfo='skip',
+                )
+            )
+
+            fig_combo.add_trace(
+                go.Scatter(
+                    x=[proj_n],
+                    y=[float(likely_aav)],
+                    mode='markers',
+                    marker=dict(size=8, color=aav_color),
+                    yaxis='y2',
+                    showlegend=False,
+                    hoverinfo='skip',
+                )
+            )
+
+            hover_x = hist_proj['contract_n'].astype(float).tolist() + [float(proj_n)]
+            hover_term = hist_proj['term'].astype(float).tolist() + [float(likely_term)]
+            hover_aav = hist_proj['aav'].astype(float).tolist() + [float(likely_aav)]
+            hover_custom = list(zip(hover_term, hover_aav))
+
+            fig_combo.add_trace(
+                go.Scatter(
+                    x=hover_x,
+                    y=hover_term,
+                    mode='markers',
+                    marker=dict(size=18, color='rgba(0,0,0,0)'),
+                    customdata=hover_custom,
+                    hovertemplate='Contract: %{x:.0f}<br>Term: %{customdata[0]:.1f} yrs<br>AAV: $%{customdata[1]:,.0f}<extra></extra>',
+                    showlegend=False,
+                )
+            )
+
+            fig_combo.add_trace(
+                go.Scatter(
+                    x=hover_x,
+                    y=hover_aav,
+                    mode='markers',
+                    marker=dict(size=18, color='rgba(0,0,0,0)'),
+                    yaxis='y2',
+                    customdata=hover_custom,
+                    hovertemplate='Contract: %{x:.0f}<br>Term: %{customdata[0]:.1f} yrs<br>AAV: $%{customdata[1]:,.0f}<extra></extra>',
+                    showlegend=False,
+                )
+            )
+
+            fig_combo.update_layout(
+                title=dict(text='Contract Projection', x=0.5, xanchor='center'),
+                margin=dict(l=10, r=10, t=60, b=80),
                 xaxis=dict(
-                    title='Term (years)',
+                    title='Contract #',
                     tickmode='linear',
                     dtick=1,
-                    range=[0.5, float(dp_plot['term'].max()) + 0.5],
+                    range=[0.5, float(proj_n) + 0.5],
+                    showspikes=False,
                 ),
-                yaxis=dict(title='Projected AAV', tickprefix='$'),
+                yaxis=dict(
+                    title='Term (years)',
+                    range=term_range,
+                    showspikes=False,
+                ),
+                yaxis2=dict(
+                    title='AAV',
+                    range=aav_range,
+                    overlaying='y',
+                    side='right',
+                    tickprefix='$',
+                    showspikes=False,
+                ),
+                legend=dict(
+                    orientation='h',
+                    x=0.5,
+                    xanchor='center',
+                    y=-0.18,
+                    yanchor='top',
+                ),
+                hovermode='closest',
                 height=PLOT_H,
             )
 
-            fig_poss.update_xaxes(fixedrange=True)
-            fig_poss.update_yaxes(fixedrange=True)
+            fig_combo.update_xaxes(fixedrange=True, showspikes=False)
+            fig_combo.update_yaxes(fixedrange=True, showspikes=False)
+            fig_combo.update_layout(yaxis2=dict(fixedrange=True))
 
-            st.plotly_chart(fig_poss, width='stretch', config={'displayModeBar': True})
-
-with c2:
-    hist_proj = hist_before.copy()
-    hist_proj = hist_proj.dropna(subset=['term', 'aav']).copy()
-    hist_proj = hist_proj.sort_values(['seasonId_end', 'number']).reset_index(drop=True)
-    hist_proj['contract_n'] = hist_proj.index + 1
-
-    if hist_proj.empty or pd.isna(likely_term) or pd.isna(likely_aav):
-        st.info('No historical/projection data available for contract projection chart.')
-    else:
-        last_n = int(hist_proj['contract_n'].iloc[-1])
-        proj_n = last_n + 1
-
-        term_range = _y_range(pd.concat([hist_proj['term'], pd.Series([likely_term])]), pad=1.0, lo=0.0)
-        aav_range = _y_range(pd.concat([hist_proj['aav'], pd.Series([likely_aav])]), pad=1_000_000.0, lo=0.0)
-
-        fig_combo = go.Figure()
-        term_color = '#636EFA'
-        aav_color = '#EF553B'
-        last_term = float(hist_proj['term'].iloc[-1])
-        last_aav = float(hist_proj['aav'].iloc[-1])
-
-        fig_combo.add_trace(
-            go.Scatter(
-                x=hist_proj['contract_n'],
-                y=hist_proj['term'],
-                mode='lines+markers',
-                line=dict(width=3, color=term_color),
-                marker=dict(size=7, color=term_color),
-                yaxis='y',
-                name='Term',
-                hoverinfo='skip',
-            )
-        )
-
-        fig_combo.add_trace(
-            go.Scatter(
-                x=hist_proj['contract_n'],
-                y=hist_proj['aav'],
-                mode='lines+markers',
-                line=dict(width=3, color=aav_color),
-                marker=dict(size=7, color=aav_color),
-                yaxis='y2',
-                name='AAV',
-                hoverinfo='skip',
-            )
-        )
-
-        # Dashed projection segments are drawn as shapes so they do not add duplicate
-        # hover rows at the crossover contract.
-        fig_combo.add_shape(
-            type='line',
-            xref='x',
-            yref='y',
-            x0=last_n,
-            y0=last_term,
-            x1=proj_n,
-            y1=float(likely_term),
-            line=dict(color=term_color, width=3, dash='dot'),
-        )
-
-        fig_combo.add_shape(
-            type='line',
-            xref='x',
-            yref='y2',
-            x0=last_n,
-            y0=last_aav,
-            x1=proj_n,
-            y1=float(likely_aav),
-            line=dict(color=aav_color, width=3, dash='dot'),
-        )
-
-        fig_combo.add_trace(
-            go.Scatter(
-                x=[proj_n],
-                y=[float(likely_term)],
-                mode='markers',
-                marker=dict(size=8, color=term_color),
-                yaxis='y',
-                showlegend=False,
-                hoverinfo='skip',
-            )
-        )
-
-        fig_combo.add_trace(
-            go.Scatter(
-                x=[proj_n],
-                y=[float(likely_aav)],
-                mode='markers',
-                marker=dict(size=8, color=aav_color),
-                yaxis='y2',
-                showlegend=False,
-                hoverinfo='skip',
-            )
-        )
-
-        hover_x = hist_proj['contract_n'].astype(float).tolist() + [float(proj_n)]
-        hover_term = hist_proj['term'].astype(float).tolist() + [float(likely_term)]
-        hover_aav = hist_proj['aav'].astype(float).tolist() + [float(likely_aav)]
-        hover_custom = list(zip(hover_term, hover_aav))
-
-        fig_combo.add_trace(
-            go.Scatter(
-                x=hover_x,
-                y=hover_term,
-                mode='markers',
-                marker=dict(size=18, color='rgba(0,0,0,0)'),
-                customdata=hover_custom,
-                hovertemplate='Contract: %{x:.0f}<br>Term: %{customdata[0]:.1f} yrs<br>AAV: $%{customdata[1]:,.0f}<extra></extra>',
-                showlegend=False,
-            )
-        )
-
-        fig_combo.add_trace(
-            go.Scatter(
-                x=hover_x,
-                y=hover_aav,
-                mode='markers',
-                marker=dict(size=18, color='rgba(0,0,0,0)'),
-                yaxis='y2',
-                customdata=hover_custom,
-                hovertemplate='Contract: %{x:.0f}<br>Term: %{customdata[0]:.1f} yrs<br>AAV: $%{customdata[1]:,.0f}<extra></extra>',
-                showlegend=False,
-            )
-        )
-
-        fig_combo.update_layout(
-            title=dict(text='Contract Projection', x=0.5, xanchor='center'),
-            margin=dict(l=10, r=10, t=60, b=80),
-            xaxis=dict(
-                title='Contract #',
-                tickmode='linear',
-                dtick=1,
-                range=[0.5, float(proj_n) + 0.5],
-                showspikes=False,
-            ),
-            yaxis=dict(
-                title='Term (years)',
-                range=term_range,
-                showspikes=False,
-            ),
-            yaxis2=dict(
-                title='AAV',
-                range=aav_range,
-                overlaying='y',
-                side='right',
-                tickprefix='$',
-                showspikes=False,
-            ),
-            legend=dict(
-                orientation='h',
-                x=0.5,
-                xanchor='center',
-                y=-0.18,
-                yanchor='top',
-            ),
-            hovermode='closest',
-            height=PLOT_H,
-        )
-
-        fig_combo.update_xaxes(fixedrange=True, showspikes=False)
-        fig_combo.update_yaxes(fixedrange=True, showspikes=False)
-        fig_combo.update_layout(yaxis2=dict(fixedrange=True))
-
-        st.plotly_chart(fig_combo, width='stretch', config={'displayModeBar': True})
+            st.plotly_chart(fig_combo, width='stretch', config={'displayModeBar': True})
 
 with c3:
-    peer_rows = []
-    for _, row in fa.iterrows():
-        row_dp = _build_possibilities(row, resign_suffix)
-        t_star, a_star = _most_likely(row_dp)
-        if pd.notna(t_star) and pd.notna(a_star):
-            peer_rows.append(
-                {
-                    'playerId': int(row['playerId']),
-                    'term': float(t_star),
-                    'aav': float(a_star),
-                }
-            )
+    with st.container(border=True):
+        peer_rows = []
+        for _, row in fa.iterrows():
+            row_dp = _build_possibilities(row, resign_suffix)
+            t_star, a_star = _most_likely(row_dp)
+            if pd.notna(t_star) and pd.notna(a_star):
+                peer_rows.append(
+                    {
+                        'playerId': int(row['playerId']),
+                        'term': float(t_star),
+                        'aav': float(a_star),
+                    }
+                )
 
-    peers = pd.DataFrame(peer_rows)
-    if peers.empty:
-        st.info('No free-agent projections available for this selection.')
-    else:
-        peers['name'] = peers['playerId'].apply(_name_for)
-        peers['is_player'] = peers['playerId'] == int(player_id)
-        peers['term_int'] = pd.to_numeric(peers['term'], errors='coerce').round().astype('Int64')
-        peers = peers.dropna(subset=['term_int', 'aav']).copy()
-        peers['term_label'] = peers['term_int'].astype(str)
-
+        peers = pd.DataFrame(peer_rows)
         if peers.empty:
             st.info('No free-agent projections available for this selection.')
         else:
-            others = peers.loc[~peers['is_player']].copy()
-            mine = peers.loc[peers['is_player']].copy()
-            term_order = [str(t) for t in sorted(peers['term_int'].dropna().unique().tolist())]
+            peers['name'] = peers['playerId'].apply(_name_for)
+            peers['is_player'] = peers['playerId'] == int(player_id)
+            peers['term_int'] = pd.to_numeric(peers['term'], errors='coerce').round().astype('Int64')
+            peers = peers.dropna(subset=['term_int', 'aav']).copy()
+            peers['term_label'] = peers['term_int'].astype(str)
 
-            fig_sc = go.Figure()
+            if peers.empty:
+                st.info('No free-agent projections available for this selection.')
+            else:
+                others = peers.loc[~peers['is_player']].copy()
+                mine = peers.loc[peers['is_player']].copy()
+                term_order = [str(t) for t in sorted(peers['term_int'].dropna().unique().tolist())]
 
-            if not others.empty:
-                fig_sc.add_trace(
-                    go.Box(
-                        x=others['term_label'],
-                        y=others['aav'],
-                        boxpoints='all',
-                        jitter=0.35,
-                        pointpos=0.0,
-                        marker=dict(
-                            size=6,
-                            opacity=0.45,
-                            color='rgba(130,130,130,0.75)',
-                        ),
-                        line=dict(color='rgba(110,110,110,0.75)', width=1.5),
-                        fillcolor='rgba(150,150,150,0.10)',
-                        customdata=others[['name']].to_numpy(),
-                        hoveron='points',
-                        hovertemplate='Player: %{customdata[0]}<br>Projected Term: %{x} yrs<br>Projected AAV: $%{y:,.0f}<extra></extra>',
-                        showlegend=False,
+                fig_sc = go.Figure()
+
+                if not others.empty:
+                    fig_sc.add_trace(
+                        go.Box(
+                            x=others['term_label'],
+                            y=others['aav'],
+                            boxpoints='all',
+                            jitter=0.35,
+                            pointpos=0.0,
+                            marker=dict(
+                                size=6,
+                                opacity=0.45,
+                                color='rgba(130,130,130,0.75)',
+                            ),
+                            line=dict(color='rgba(110,110,110,0.75)', width=1.5),
+                            fillcolor='rgba(150,150,150,0.10)',
+                            customdata=others[['name']].to_numpy(),
+                            hoveron='points',
+                            hovertemplate='Player: %{customdata[0]}<br>Projected Term: %{x} yrs<br>Projected AAV: $%{y:,.0f}<extra></extra>',
+                            showlegend=False,
+                        )
                     )
+
+                if not mine.empty:
+                    fig_sc.add_trace(
+                        go.Scatter(
+                            x=mine['term_label'],
+                            y=mine['aav'],
+                            mode='markers',
+                            marker=dict(
+                                size=14,
+                                opacity=1.0,
+                                symbol='star',
+                                color='yellow',
+                                line=dict(width=1, color='black'),
+                            ),
+                            customdata=mine[['name']].to_numpy(),
+                            hovertemplate='Player: %{customdata[0]}<br>Projected Term: %{x} yrs<br>Projected AAV: $%{y:,.0f}<extra></extra>',
+                            showlegend=False,
+                        )
+                    )
+
+                fig_sc.update_layout(
+                    title=dict(text='Projection vs. Other FAs', x=0.5, xanchor='center'),
+                    margin=dict(l=10, r=10, t=50, b=10),
+                    xaxis=dict(
+                        title='Projected Term (years)',
+                        type='category',
+                        categoryorder='array',
+                        categoryarray=term_order,
+                    ),
+                    yaxis=dict(title='Projected AAV', tickprefix='$'),
+                    height=PLOT_H,
                 )
 
-            if not mine.empty:
-                fig_sc.add_trace(
-                    go.Scatter(
-                        x=mine['term_label'],
-                        y=mine['aav'],
-                        mode='markers',
-                        marker=dict(
-                            size=14,
-                            opacity=1.0,
-                            symbol='star',
-                            color='yellow',
-                            line=dict(width=1, color='black'),
-                        ),
-                        customdata=mine[['name']].to_numpy(),
-                        hovertemplate='Player: %{customdata[0]}<br>Projected Term: %{x} yrs<br>Projected AAV: $%{y:,.0f}<extra></extra>',
-                        showlegend=False,
-                    )
-                )
+                fig_sc.update_xaxes(fixedrange=True)
+                fig_sc.update_yaxes(fixedrange=True)
 
-            fig_sc.update_layout(
-                title=dict(text='Projection vs. Other FAs', x=0.5, xanchor='center'),
-                margin=dict(l=10, r=10, t=50, b=10),
-                xaxis=dict(
-                    title='Projected Term (years)',
-                    type='category',
-                    categoryorder='array',
-                    categoryarray=term_order,
-                ),
-                yaxis=dict(title='Projected AAV', tickprefix='$'),
-                height=PLOT_H,
-            )
-
-            fig_sc.update_xaxes(fixedrange=True)
-            fig_sc.update_yaxes(fixedrange=True)
-
-            st.plotly_chart(fig_sc, width='stretch', config={'displayModeBar': True})
+                st.plotly_chart(fig_sc, width='stretch', config={'displayModeBar': True})
 
 metric_payload = [
     {

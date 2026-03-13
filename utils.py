@@ -18,6 +18,10 @@ def load_biographies():
     path = 'data/biographies.csv'
     return _read_csv(path, _file_cache_token(path))
 
+def load_games():
+    path = 'data/games.csv'
+    return _read_csv(path, _file_cache_token(path))
+
 def load_contract_projection(season = 20262027):
     path = f'data/contract_projection_{season}.csv'
     return _read_csv(path, _file_cache_token(path))
@@ -39,4 +43,28 @@ def load_skater_shot_analysis(season = 20242025):
 
 def load_goalie_shot_analysis(season = 20242025):
     path = f'data/goalie_shot_analysis_{season}.csv'
+    return _read_csv(path, _file_cache_token(path))
+
+def load_gbgs_skater_basic(season = 20242025):
+    path = f'data/gbgs/basic/skaters_{season}.csv'
+    return _read_csv(path, _file_cache_token(path))
+
+def load_gbgs_skater_advanced(season = 20242025):
+    path = f'data/gbgs/advanced/skaters_{season}.csv'
+    return _read_csv(path, _file_cache_token(path))
+
+def load_gbgs_goalie_basic(season = 20242025):
+    path = f'data/gbgs/basic/goalies_{season}.csv'
+    return _read_csv(path, _file_cache_token(path))
+
+def load_gbgs_goalie_advanced(season = 20242025):
+    path = f'data/gbgs/advanced/goalies_{season}.csv'
+    return _read_csv(path, _file_cache_token(path))
+
+def load_sbss_skaters(season = 20242025):
+    path = f'data/sbss/skaters_{season}.csv'
+    return _read_csv(path, _file_cache_token(path))
+
+def load_sbss_goalies(season = 20242025):
+    path = f'data/sbss/goalies_{season}.csv'
     return _read_csv(path, _file_cache_token(path))

@@ -58,6 +58,21 @@ skater_free_agents_page = st.Page(
     icon  = ':material/attach_money:',
     url_path = 'skater_free_agents'
 )
+forward_expected_goals_page = st.Page(
+    page  = 'views/forward_expected_goals.py',
+    title = 'Forward Expected Goals',
+    icon  = ':material/leaderboard:'
+)
+defense_expected_goals_page = st.Page(
+    page  = 'views/defense_expected_goals.py',
+    title = 'Defense Expected Goals',
+    icon  = ':material/leaderboard:'
+)
+goalie_expected_goals_page = st.Page(
+    page  = 'views/goalie_expected_goals.py',
+    title = 'Goalie Expected Goals',
+    icon  = ':material/leaderboard:'
+)
 
 
 # Register all routes, then render custom sidebar links.
@@ -68,6 +83,11 @@ pg = st.navigation(
             skater_shot_analysis_page,
             goalie_shot_analysis_page,
             skater_free_agents_page,
+        ],
+        'Rankings': [
+            forward_expected_goals_page,
+            defense_expected_goals_page,
+            goalie_expected_goals_page,
         ],
         'Models': [expected_goals_page, contract_projection_page],
         'Articles': [xg_article_page],
@@ -83,6 +103,11 @@ with st.sidebar:
     st.page_link(skater_shot_analysis_page, label='Skater Shot Analysis', icon=':material/readiness_score:')
     st.page_link(goalie_shot_analysis_page, label='Goalie Shot Analysis', icon=':material/readiness_score:')
     st.page_link(skater_free_agents_page, label='Skater Free Agents', icon=':material/attach_money:')
+
+    st.caption('Rankings')
+    st.page_link(forward_expected_goals_page, label='Forward Expected Goals', icon=':material/leaderboard:')
+    st.page_link(defense_expected_goals_page, label='Defense Expected Goals', icon=':material/leaderboard:')
+    st.page_link(goalie_expected_goals_page, label='Goalie Expected Goals', icon=':material/leaderboard:')
 
     st.caption('Models')
     st.page_link(expected_goals_page, label='Expected Goal', icon=':material/model_training:')
