@@ -1,7 +1,12 @@
 # Load libraries.
+import base64
+import html
+import mimetypes
 import os
-import streamlit as st
+from pathlib import Path
+
 import pandas as pd
+import streamlit as st
 
 
 def _file_cache_token(path):
@@ -12,6 +17,38 @@ def _file_cache_token(path):
 @st.cache_data
 def _read_csv(path, token):
     return pd.read_csv(path)
+
+
+@st.cache_data(show_spinner=False)
+def _local_file_data_url(path, token):
+    mime_type = mimetypes.guess_type(path)[0] or 'application/octet-stream'
+    data = Path(path).read_bytes()
+    encoded = base64.b64encode(data).decode('ascii')
+    return f'data:{mime_type};base64,{encoded}'
+
+
+def file_data_url(path):
+    return _local_file_data_url(path, _file_cache_token(path))
+
+
+def render_local_image(path, fallback=None, alt=''):
+    selected_path = None
+
+    if path and os.path.exists(path):
+        selected_path = path
+    elif fallback and os.path.exists(fallback):
+        selected_path = fallback
+
+    if selected_path is None:
+        st.empty()
+        return
+
+    data_url = file_data_url(selected_path)
+    safe_alt = html.escape(alt, quote=True)
+    st.markdown(
+        f'<img src="{data_url}" alt="{safe_alt}" style="display: block; width: 100%; height: auto;">',
+        unsafe_allow_html=True,
+    )
 
 # Define helpers.
 def load_biographies():

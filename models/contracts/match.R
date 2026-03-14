@@ -1,14 +1,39 @@
 suppressMessages(library(tidyverse))
 suppressMessages(library(nhlscraper))
 
-MIN_OUTPUT_SEASON_ID <- 20132014L
 MIN_TRANSACTION_SEASON_ID <- 20092010L
+MIN_OUTPUT_DATE <- as.Date("2013-07-05")
 
 OUTPUT_SKATERS <- "models/contracts/data/skater_contracts.csv"
 OUTPUT_GOALIES <- "models/contracts/data/goalie_contracts.csv"
 
+free_agency_starts <- tibble::tibble(
+  seasonId = c(
+    20052006L, 20062007L, 20072008L, 20082009L, 20092010L,
+    20102011L, 20112012L, 20122013L, 20132014L, 20142015L,
+    20152016L, 20162017L, 20172018L, 20182019L, 20192020L,
+    20202021L, 20212022L, 20222023L, 20232024L, 20242025L,
+    20252026L
+  ),
+  freeAgencyStart = as.Date(c(
+    "2005-08-01", "2006-07-01", "2007-07-01", "2008-07-01", "2009-07-01",
+    "2010-07-01", "2011-07-01", "2012-07-01", "2013-07-05", "2014-07-01",
+    "2015-07-01", "2016-07-01", "2017-07-01", "2018-07-01", "2019-07-01",
+    "2020-10-09", "2021-07-28", "2022-07-13", "2023-07-01", "2024-07-01",
+    "2025-07-01"
+  ))
+)
+
 caps <- tibble::tibble(
   season = c(
+    "20052006",
+    "20062007",
+    "20072008",
+    "20082009",
+    "20092010",
+    "20102011",
+    "20112012",
+    "20122013",
     "20132014",
     "20142015",
     "20152016",
@@ -26,6 +51,14 @@ caps <- tibble::tibble(
     "20272028"
   ),
   cap_millions = c(
+    39.0,
+    44.0,
+    50.3,
+    56.7,
+    56.8,
+    59.4,
+    64.3,
+    60.0,
     64.3,
     69.0,
     71.4,
@@ -79,6 +112,41 @@ safe_detect_word <- function(text, token) {
 
 season_start_year <- function(season_id) {
   season_id %/% 10000L
+}
+
+free_agency_start_date <- function(season_id) {
+  mapped <- free_agency_starts$freeAgencyStart[match(season_id, free_agency_starts$seasonId)]
+  fallback <- rep(as.Date(NA), length(season_id))
+  valid <- !is.na(season_id)
+  fallback[valid] <- as.Date(sprintf("%d-07-01", season_start_year(season_id[valid])))
+  dplyr::coalesce(mapped, fallback)
+}
+
+age_on_date <- function(birth_date, reference_date) {
+  birth_date <- as.Date(birth_date)
+  reference_date <- as.Date(reference_date)
+
+  birth_lt <- as.POSIXlt(birth_date)
+  ref_lt <- as.POSIXlt(reference_date)
+
+  years <- ref_lt$year - birth_lt$year
+  before_birthday <- (ref_lt$mon < birth_lt$mon) |
+    ((ref_lt$mon == birth_lt$mon) & (ref_lt$mday < birth_lt$mday))
+
+  dplyr::if_else(
+    is.na(birth_date) | is.na(reference_date),
+    NA_real_,
+    as.numeric(years - before_birthday)
+  )
+}
+
+cap_term_by_resign <- function(term_value, resign_flag) {
+  max_term <- dplyr::if_else(dplyr::coalesce(resign_flag, FALSE), 8L, 7L)
+  dplyr::if_else(
+    is.na(term_value),
+    term_value,
+    pmin(as.integer(term_value), max_term)
+  )
 }
 
 map_espn_team_id <- function(display_name, tx_date) {
@@ -273,7 +341,7 @@ match_signing_dates <- function(contracts_tbl, signing_clauses) {
         firstInitialHit ~ 80L,
         TRUE ~ 70L
       ),
-      dateTarget = as.Date(sprintf("%d-07-01", startYear)),
+      dateTarget = free_agency_start_date(startSeasonId),
       dateGap = abs(as.integer(tx_date - dateTarget)),
       score = nameScore +
         dplyr::if_else(!is.na(term_tx), 10L, 0L) +
@@ -409,7 +477,7 @@ contracts_raw <- nhlscraper::contracts() %>%
     prevAAV = dplyr::lag(aav)
   ) %>%
   dplyr::ungroup() %>%
-  dplyr::filter(!is.na(ageAtSigning), !is.na(aav))
+  dplyr::filter(!is.na(aav))
 
 bios <- nhlscraper::players() %>%
   dplyr::filter(playerId %in% contracts_raw$playerId) %>%
@@ -434,6 +502,7 @@ contracts_shared <- contracts_raw %>%
   dplyr::left_join(bios, by = "playerId", relationship = "many-to-one") %>%
   dplyr::mutate(
     positionCode = dplyr::coalesce(positionCode, positionCode_bio),
+    ageAtSigning = age_on_date(birthDate, free_agency_start_date(startSeasonId)),
     aavP = aav / cap,
     prevAAVP = prevAAV / capPrev
   ) %>%
@@ -445,7 +514,7 @@ contracts_shared <- contracts_raw %>%
   dplyr::mutate(
     dateOfSigning = dplyr::coalesce(
       dateOfSigning,
-      as.Date(sprintf("%d-07-01", season_start_year(startSeasonId)))
+      free_agency_start_date(startSeasonId)
     )
   )
 
@@ -456,10 +525,7 @@ gbg_team_game_log <- build_gbg_team_game_log(
 
 last_team_before_contract <- contracts_shared %>%
   dplyr::mutate(
-    contractDecisionDate = dplyr::coalesce(
-      dateOfSigning,
-      as.Date(sprintf("%d-07-01", season_start_year(startSeasonId)))
-    )
+    contractDecisionDate = dplyr::coalesce(dateOfSigning, free_agency_start_date(startSeasonId))
   ) %>%
   dplyr::select(contractRowId, playerId, contractDecisionDate) %>%
   dplyr::left_join(gbg_team_game_log, by = "playerId", relationship = "many-to-many") %>%
@@ -480,33 +546,46 @@ contracts_shared <- contracts_shared %>%
       missing = FALSE
     )
   ) %>%
-  dplyr::filter(startSeasonId >= MIN_OUTPUT_SEASON_ID) %>%
+  dplyr::group_by(playerId) %>%
+  dplyr::arrange(startSeasonId, .by_group = TRUE) %>%
+  dplyr::mutate(
+    prevIsResign = dplyr::lag(isResign),
+    term = cap_term_by_resign(term, isResign),
+    prevTerm = cap_term_by_resign(prevTerm, prevIsResign)
+  ) %>%
+  dplyr::ungroup() %>%
+  dplyr::filter(dateOfSigning >= MIN_OUTPUT_DATE) %>%
   dplyr::transmute(
     playerId,
-    playerFullName,
-    positionCode,
-    signedWithTeamId,
-    signedWithTeamTriCode,
+    cap,
+    capPrev,
     startSeasonId,
-    endSeasonId,
+    startSeasonIdPrev = prevStartSeasonId,
+    term,
+    termPrev = prevTerm,
+    aav,
+    aavPrev = prevAAV,
+    aavPerc = aavP,
+    aavPercPrev = prevAAVP,
     dateOfSigning,
-    isFirst,
+    signedWithTeamId,
+    isResign,
+    contractNumber,
     isLast,
     birthDate,
-    cap,
     ageAtSigning,
-    contractNumber,
-    prevStartSeasonId,
-    prevTerm,
-    prevAAVP,
     height,
     weight,
     handCode,
-    term,
-    aav,
-    aavP,
-    isResign
+    positionCode
   )
+
+rows_before_complete_cases <- nrow(contracts_shared)
+
+contracts_shared <- contracts_shared %>%
+  tidyr::drop_na(playerId, cap, startSeasonId, term, aav, aavPerc, dateOfSigning, birthDate, ageAtSigning, positionCode)
+
+rows_removed_complete_cases <- rows_before_complete_cases - nrow(contracts_shared)
 
 contracts_skaters <- contracts_shared %>%
   dplyr::filter(positionCode != "G")
@@ -520,5 +599,6 @@ readr::write_csv(contracts_goalies, OUTPUT_GOALIES)
 
 cat(sprintf("Wrote %s rows to %s\n", nrow(contracts_skaters), OUTPUT_SKATERS))
 cat(sprintf("Wrote %s rows to %s\n", nrow(contracts_goalies), OUTPUT_GOALIES))
+cat(sprintf("Removed %s rows containing NA values\n", rows_removed_complete_cases))
 cat(sprintf("Matched signing dates for %s skater contracts\n", sum(!is.na(contracts_skaters$dateOfSigning))))
 cat(sprintf("Matched signing dates for %s goalie contracts\n", sum(!is.na(contracts_goalies$dateOfSigning))))

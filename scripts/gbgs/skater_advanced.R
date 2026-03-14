@@ -13,7 +13,8 @@ base <- readr::read_csv(
 ) %>%
   dplyr::transmute(
     playerId = as.integer(playerId),
-    gameId = as.integer(gameId)
+    gameId = as.integer(gameId),
+    teamId = as.integer(teamId)
   )
 
 skater_ids <- sort(unique(base$playerId))
@@ -77,20 +78,13 @@ metrics <- c("ixGF", "oxGF", "oxGA")
 skaters <- build_gbg_output(
   base = base,
   metric_long = metric_long,
-  id_cols = c("playerId", "gameId"),
+  id_cols = c("playerId", "gameId", "teamId"),
   metrics = metrics
 )
 
 aggregate_path <- file.path("data", "gbgs", "advanced", paste0("skaters_", SEASON, ".csv"))
-split_dir <- file.path("data", "gbgs", "advanced", "skater")
-
-write_split_entity_files(
-  data = skaters,
-  id_col = "playerId",
-  season_id = SEASON,
-  aggregate_path = aggregate_path,
-  split_dir = split_dir
-)
+dir.create(dirname(aggregate_path), recursive = TRUE, showWarnings = FALSE)
+readr::write_csv(skaters, aggregate_path)
 
 cat("Wrote season file:", aggregate_path, "\n")
 cat(

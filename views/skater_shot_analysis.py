@@ -1,7 +1,6 @@
 # Import libraries.
 import datetime as dt
 import math
-import os
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -13,6 +12,7 @@ from utils import (
     load_gbgs_skater_advanced,
     load_gbgs_skater_basic,
     load_sbss_skaters,
+    render_local_image,
 )
 
 # Set constants.
@@ -446,12 +446,7 @@ def _xg_color_spec(values: pd.Series) -> tuple[float, list[float], list[str], li
 
 
 def _img(path: str, fallback: str | None = None):
-    if path and os.path.exists(path):
-        st.image(path, width='stretch')
-    elif fallback and os.path.exists(fallback):
-        st.image(fallback, width='stretch')
-    else:
-        st.empty()
+    render_local_image(path, fallback = fallback)
 
 
 def _add_line(fig, x0, y0, x1, y1, color, width=3, dash=None, layer='below'):
@@ -786,8 +781,6 @@ def _shot_locations_rink_figure(shots: pd.DataFrame | None = None) -> go.Figure:
         ),
         xaxis=dict(
             range=[x_min - 2.0, x_max + 2.0],
-            domain=[0.0, 1.0],
-            constrain='domain',
             showgrid=False,
             zeroline=False,
             visible=False,
@@ -796,8 +789,6 @@ def _shot_locations_rink_figure(shots: pd.DataFrame | None = None) -> go.Figure:
         ),
         yaxis=dict(
             range=[y_min - 2.0, y_max + 2.0],
-            domain=[0.0, 1.0],
-            constrain='domain',
             showgrid=False,
             zeroline=False,
             visible=False,

@@ -1,7 +1,6 @@
 # Import libraries.
 import datetime as dt
 import math
-import os
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -13,6 +12,7 @@ from utils import (
     load_gbgs_goalie_advanced,
     load_gbgs_goalie_basic,
     load_sbss_goalies,
+    render_local_image,
 )
 
 # Set constants.
@@ -220,6 +220,25 @@ def _goalie_metric_series(df_in: pd.DataFrame, metric_name: str, situation_code:
     return pd.Series(0.0, index=df_in.index, dtype=float)
 
 
+def _goalie_volume_outcome_node_y(blocked: float, missed: float, saved: float, goal: float) -> list[float]:
+    positions = [1e-3, 0.70, 1e-3, 0.45, 1e-3, 0.20, 1e-3]
+    outcome_slots = [1e-3, 0.20, 0.45, 0.70]
+    outcomes = [
+        (6, goal),
+        (5, saved),
+        (3, missed),
+        (1, blocked),
+    ]
+
+    slot_idx = 0
+    for node_idx, value in outcomes:
+        if float(value) > 0:
+            positions[node_idx] = outcome_slots[slot_idx]
+            slot_idx += 1
+
+    return positions
+
+
 def _aggregate_goalies(df_in: pd.DataFrame) -> pd.DataFrame:
     if df_in.empty:
         return pd.DataFrame(columns=['playerId'])
@@ -319,12 +338,7 @@ def _fmt_sigma(value: float) -> str:
 
 
 def _img(path: str, fallback: str | None = None):
-    if path and os.path.exists(path):
-        st.image(path, width='stretch')
-    elif fallback and os.path.exists(fallback):
-        st.image(fallback, width='stretch')
-    else:
-        st.empty()
+    render_local_image(path, fallback = fallback)
 
 
 def _add_line(fig, x0, y0, x1, y1, color, width=3, dash=None, layer='below'):
@@ -571,8 +585,8 @@ def _shot_locations_rink_figure(shots: pd.DataFrame | None = None) -> go.Figure:
                 tickfont=dict(size=10),
             ),
         ),
-        xaxis=dict(range=[x_min - 2.0, x_max + 2.0], domain=[0.0, 1.0], constrain='domain', showgrid=False, zeroline=False, visible=False, automargin=False, fixedrange=True),
-        yaxis=dict(range=[y_min - 2.0, y_max + 2.0], domain=[0.0, 1.0], constrain='domain', showgrid=False, zeroline=False, visible=False, scaleanchor='x', scaleratio=1, automargin=False, fixedrange=True),
+        xaxis=dict(range=[x_min - 2.0, x_max + 2.0], showgrid=False, zeroline=False, visible=False, automargin=False, fixedrange=True),
+        yaxis=dict(range=[y_min - 2.0, y_max + 2.0], showgrid=False, zeroline=False, visible=False, scaleanchor='x', scaleratio=1, automargin=False, fixedrange=True),
     )
 
     if shot_df.empty:
@@ -770,6 +784,7 @@ with c1:
                         [corsi, blocked, fenwick, missed, shot, saved, goal],
                     )
                 ]
+                node_y = _goalie_volume_outcome_node_y(blocked, missed, saved, goal)
 
                 fig = go.Figure(
                     go.Sankey(
@@ -779,17 +794,17 @@ with c1:
                         node=dict(
                             label=node_labels,
                             x=[0.01, 0.99, 0.33, 0.99, 0.66, 0.99, 0.99],
-                            y=[1e-3, 0.70, 1e-3, 0.45, 1e-3, 0.20, 1e-3],
+                            y=node_y,
                             pad=18,
                             thickness=18,
                             color=[
-                                'rgba(255,80,72,0.9)',
-                                'rgba(255,80,72,0.9)',
-                                'rgba(255,170,40,0.9)',
-                                'rgba(255,170,40,0.9)',
-                                'rgba(255,225,70,0.9)',
-                                'rgba(255,225,70,0.9)',
                                 'rgba(90,220,120,0.9)',
+                                'rgba(90,220,120,0.9)',
+                                'rgba(255,225,70,0.9)',
+                                'rgba(255,225,70,0.9)',
+                                'rgba(255,170,40,0.9)',
+                                'rgba(255,170,40,0.9)',
+                                'rgba(255,80,72,0.9)',
                             ],
                             line=dict(width=0.5, color='rgba(255,255,255,0.22)'),
                         ),
@@ -798,12 +813,12 @@ with c1:
                             target=[2, 1, 4, 3, 6, 5],
                             value=[fenwick, blocked, shot, missed, goal, saved],
                             color=[
-                                'rgba(255,80,72,0.1)',
-                                'rgba(255,80,72,0.1)',
-                                'rgba(255,170,40,0.1)',
-                                'rgba(255,170,40,0.1)',
+                                'rgba(90,220,120,0.1)',
+                                'rgba(90,220,120,0.1)',
                                 'rgba(255,225,70,0.1)',
                                 'rgba(255,225,70,0.1)',
+                                'rgba(255,170,40,0.1)',
+                                'rgba(255,170,40,0.1)',
                             ],
                         ),
                     )

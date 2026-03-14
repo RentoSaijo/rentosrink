@@ -124,14 +124,15 @@ summarise_list_metric <- function(
 
 build_gbg_output <- function(base, metric_long, id_cols, metrics) {
   expected_metric_cols <- make_expected_metric_cols(metrics)
+  metric_id_cols <- base::intersect(id_cols, names(metric_long))
 
   wide <- if (nrow(metric_long) == 0L) {
     base
   } else {
     metric_long %>%
       dplyr::mutate(metric_col = paste0(metric, "_", strength)) %>%
-      dplyr::select(dplyr::all_of(id_cols), metric_col, value) %>%
-      dplyr::group_by(dplyr::across(dplyr::all_of(c(id_cols, "metric_col")))) %>%
+      dplyr::select(dplyr::all_of(metric_id_cols), metric_col, value) %>%
+      dplyr::group_by(dplyr::across(dplyr::all_of(c(metric_id_cols, "metric_col")))) %>%
       dplyr::summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
       tidyr::pivot_wider(
         names_from = metric_col,
@@ -142,7 +143,7 @@ build_gbg_output <- function(base, metric_long, id_cols, metrics) {
 
   out <- base %>%
     dplyr::distinct(dplyr::across(dplyr::all_of(id_cols))) %>%
-    dplyr::left_join(wide, by = id_cols)
+    dplyr::left_join(wide, by = metric_id_cols)
 
   missing_cols <- setdiff(expected_metric_cols, names(out))
   if (length(missing_cols) > 0L) {

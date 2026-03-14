@@ -1,7 +1,7 @@
 streamlit>=1.40
 pandas>=2.0
 plotly>=5.18
-kaleido>=0.2.1
+kaleido>=1.0.0
 pillow>=10.0
 selenium
 webdriver-manager

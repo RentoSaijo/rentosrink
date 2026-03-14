@@ -7,7 +7,12 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont, ImageOps
-from utils import load_biographies, load_skater_contracts, load_skater_free_agents
+from utils import (
+    load_biographies,
+    load_skater_contracts,
+    load_skater_free_agents,
+    render_local_image,
+)
 
 # Set constants.
 PLOT_H = 440
@@ -126,18 +131,15 @@ def _to_image_bytes(fig, width, height):
 
     last_exc = None
     for candidate in (styled, plain):
-        for kwargs in ({'engine': 'kaleido'}, {}):
-            try:
-                return candidate.to_image(
-                    format='png',
-                    width=int(width),
-                    height=int(height),
-                    scale=1,
-                    **kwargs,
-                )
-            except Exception as exc:
-                last_exc = exc
-                continue
+        try:
+            return candidate.to_image(
+                format='png',
+                width=int(width),
+                height=int(height),
+                scale=1,
+            )
+        except Exception as exc:
+            last_exc = exc
 
     raise last_exc if last_exc is not None else RuntimeError('Unknown chart export error.')
 
@@ -303,10 +305,7 @@ def _build_contract_card_png(
 
 
 def _img(path, fallback=None):
-    if path and os.path.exists(path):
-        st.image(path, width='stretch')
-    elif fallback and os.path.exists(fallback):
-        st.image(fallback, width='stretch')
+    render_local_image(path, fallback = fallback)
 
 
 def _to_num(series_or_val):
@@ -795,7 +794,7 @@ with c1:
                 st.info('No contract possibility data available for this player.')
             else:
                 dp_plot['prob_clamped'] = dp_plot['prob'].clip(lower=0.0, upper=1.0).fillna(0.0)
-                dp_plot['msize'] = 10 + 30 * dp_plot['prob_clamped']
+                dp_plot['msize'] = 12 + 34 * dp_plot['prob_clamped']
                 dp_plot['prob_txt'] = dp_plot['prob_clamped'].apply(lambda p: '' if pd.isna(p) else f'{p:.0%}')
 
                 fig_poss = go.Figure(
@@ -807,7 +806,7 @@ with c1:
                         marker=dict(size=dp_plot['msize'], sizemode='diameter'),
                         text=dp_plot['prob_txt'],
                         textposition='top center',
-                        textfont=dict(size=13),
+                        textfont=dict(size=15),
                         hovertemplate='Term: %{x:.0f} yrs<br>Projected AAV: $%{y:,.0f}<br>Probability: %{text}<extra></extra>',
                         showlegend=False,
                         cliponaxis=False,

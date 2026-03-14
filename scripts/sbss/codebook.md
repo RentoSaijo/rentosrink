@@ -16,11 +16,9 @@ The SBSS pipeline is intentionally tied to the six-partition xG system in:
 ## File Layout
 
 - Skaters aggregate: `data/sbss/skaters_{seasonId}.csv`
-- Skaters split: `data/sbss/skater/{playerId}_{seasonId}.csv`
 - Goalies aggregate: `data/sbss/goalies_{seasonId}.csv`
-- Goalies split: `data/sbss/goalie/{playerId}_{seasonId}.csv`
 
-Aggregate files keep the entity ID as the first column. Split files drop it because it is already encoded in the filename.
+SBSS is aggregate-only. There are no split per-entity SBSS files.
 
 ## General Rules
 

@@ -111,6 +111,8 @@ safe_goalie_game_summary <- function(season, game_type) {
   if (nrow(out) == 0) {
     return(tibble::tibble(
       playerId = integer(),
+      teamTriCode = character(),
+      teamId = integer(),
       gameId = integer(),
       gameTypeId = integer(),
       gameDate = as.Date(character())
@@ -120,6 +122,8 @@ safe_goalie_game_summary <- function(season, game_type) {
   out %>%
     dplyr::transmute(
       playerId = as.integer(playerId),
+      teamTriCode = if ("teamTriCode" %in% names(out)) as.character(teamTriCode) else NA_character_,
+      teamId = if ("teamId" %in% names(out)) as.integer(teamId) else NA_integer_,
       gameId = as.integer(gameId),
       gameTypeId = as.integer(game_type),
       gameDate = as.Date(gameDate)
@@ -178,8 +182,35 @@ cat("Loading goalie appearances...\n")
 goalie_games <- dplyr::bind_rows(
   safe_goalie_game_summary(SEASON, 2L),
   safe_goalie_game_summary(SEASON, 3L)
-) %>%
-  dplyr::distinct(playerId, gameId, gameTypeId, gameDate)
+) 
+
+games <- nhlscraper::games() %>%
+  dplyr::filter(seasonId == SEASON, gameTypeId %in% c(2L, 3L)) %>%
+  dplyr::transmute(
+    gameId = as.integer(gameId),
+    gameTypeId = as.integer(gameTypeId),
+    gameDate = as.Date(gameDate),
+    homeTeamId = as.integer(homeTeamId),
+    visitingTeamId = as.integer(visitingTeamId)
+  )
+
+season_team_lookup <- nhlscraper::teams() %>%
+  dplyr::transmute(
+    teamId = as.integer(teamId),
+    teamTriCode = as.character(teamTriCode)
+  ) %>%
+  dplyr::filter(
+    !is.na(teamId),
+    !is.na(teamTriCode),
+    teamId %in% unique(c(games$homeTeamId, games$visitingTeamId))
+  ) %>%
+  dplyr::distinct(teamTriCode, .keep_all = TRUE)
+
+goalie_games <- goalie_games %>%
+  dplyr::left_join(season_team_lookup, by = "teamTriCode", suffix = c("", "_lookup")) %>%
+  dplyr::mutate(teamId = dplyr::coalesce(teamId, teamId_lookup)) %>%
+  dplyr::select(-teamId_lookup) %>%
+  dplyr::distinct(playerId, teamTriCode, teamId, gameId, gameTypeId, gameDate)
 
 goalie_ids <- sort(unique(goalie_games$playerId))
 
@@ -222,20 +253,28 @@ pbp <- pbp %>%
     ))
   )
 
-games <- nhlscraper::games() %>%
-  dplyr::filter(seasonId == SEASON, gameTypeId %in% c(2L, 3L)) %>%
-  dplyr::transmute(
-    gameId = as.integer(gameId),
-    gameTypeId = as.integer(gameTypeId),
-    gameDate = as.Date(gameDate)
-  )
-
 game_dates <- dplyr::bind_rows(
-  games,
+  games %>% dplyr::select(gameId, gameTypeId, gameDate),
   goalie_games %>% dplyr::select(gameId, gameTypeId, gameDate)
 ) %>%
   dplyr::group_by(gameId, gameTypeId) %>%
   dplyr::summarise(gameDate = first_non_na_date(gameDate), .groups = "drop")
+
+goalie_team_map <- dplyr::bind_rows(
+  pbp %>%
+    dplyr::transmute(gameId = as.integer(gameId), playerId = as.integer(homeGoaliePlayerId)) %>%
+    dplyr::filter(!is.na(playerId)) %>%
+    dplyr::distinct() %>%
+    dplyr::left_join(games %>% dplyr::select(gameId, homeTeamId), by = "gameId") %>%
+    dplyr::transmute(playerId, gameId, teamId = homeTeamId),
+  pbp %>%
+    dplyr::transmute(gameId = as.integer(gameId), playerId = as.integer(awayGoaliePlayerId)) %>%
+    dplyr::filter(!is.na(playerId)) %>%
+    dplyr::distinct() %>%
+    dplyr::left_join(games %>% dplyr::select(gameId, visitingTeamId), by = "gameId") %>%
+    dplyr::transmute(playerId, gameId, teamId = visitingTeamId)
+) %>%
+  dplyr::distinct(playerId, gameId, .keep_all = TRUE)
 
 # ----- Metrics ----- #
 
@@ -305,55 +344,23 @@ stats_wide <- stats_long %>%
 expected_cols <- make_expected_metric_cols(all_metric_names)
 
 goalies <- goalie_games %>%
+  dplyr::left_join(goalie_team_map, by = c("playerId", "gameId"), suffix = c("", "_map")) %>%
+  dplyr::mutate(teamId = dplyr::coalesce(teamId, teamId_map)) %>%
   dplyr::left_join(stats_wide, by = c("playerId", "gameId", "gameTypeId")) %>%
   dplyr::left_join(game_dates, by = c("gameId", "gameTypeId"), suffix = c("", "_games")) %>%
   dplyr::mutate(gameDate = dplyr::coalesce(gameDate, gameDate_games)) %>%
-  dplyr::select(-gameDate_games) %>%
+  dplyr::select(-teamTriCode, -teamId_map, -gameDate_games) %>%
   ensure_cols(expected_cols) %>%
-  dplyr::select(playerId, gameId, gameDate, tidyselect::all_of(expected_cols)) %>%
+  dplyr::select(playerId, gameId, teamId, gameDate, tidyselect::all_of(expected_cols)) %>%
   dplyr::arrange(playerId, gameDate, gameId)
 
 # ----- Write Files ----- #
 
 out_dir <- file.path("data", "gbgs", "basic")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-split_dir <- file.path(out_dir, "goalie")
-dir.create(split_dir, recursive = TRUE, showWarnings = FALSE)
 
 season_path <- file.path(out_dir, paste0("goalies_", SEASON, ".csv"))
-
-if (nrow(goalies) > 0) {
-  player_ids <- sort(unique(goalies$playerId))
-  wrong_dir <- file.path("data", "gbgs")
-  wrong_paths <- c(
-    file.path(wrong_dir, paste0("goalies_", SEASON, ".csv")),
-    file.path(wrong_dir, paste0(player_ids, "_", SEASON, ".csv"))
-  )
-  wrong_paths <- wrong_paths[file.exists(wrong_paths)]
-  if (length(wrong_paths) > 0L) {
-    invisible(file.remove(wrong_paths))
-  }
-
-  root_wrong_paths <- file.path(out_dir, paste0(player_ids, "_", SEASON, ".csv"))
-  root_wrong_paths <- root_wrong_paths[file.exists(root_wrong_paths)]
-  if (length(root_wrong_paths) > 0L) {
-    invisible(file.remove(root_wrong_paths))
-  }
-
-  readr::write_csv(goalies, season_path)
-  for (player_id in player_ids) {
-    player_path <- file.path(split_dir, paste0(player_id, "_", SEASON, ".csv"))
-    readr::write_csv(
-      goalies %>%
-        dplyr::filter(playerId == player_id) %>%
-        dplyr::arrange(gameDate, gameId) %>%
-        dplyr::select(-playerId),
-      player_path
-    )
-  }
-} else {
-  readr::write_csv(goalies, season_path)
-}
+readr::write_csv(goalies, season_path)
 
 cat("Wrote season file:", season_path, "\n")
 cat("Rows:", nrow(goalies), " Goalies:", length(unique(goalies$playerId)), "\n")

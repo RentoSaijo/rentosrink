@@ -14,22 +14,16 @@ This document describes the game-by-game (GBG) datasets built by:
 ### Basic
 
 - Skaters aggregate: `data/gbgs/basic/skaters_{seasonId}.csv`
-- Skaters split: `data/gbgs/basic/skater/{playerId}_{seasonId}.csv`
 - Goalies aggregate: `data/gbgs/basic/goalies_{seasonId}.csv`
-- Goalies split: `data/gbgs/basic/goalie/{playerId}_{seasonId}.csv`
 - Teams aggregate: `data/gbgs/basic/teams_{seasonId}.csv`
-- Teams split: `data/gbgs/basic/team/{teamId}_{seasonId}.csv`
 
 ### Advanced
 
 - Skaters aggregate: `data/gbgs/advanced/skaters_{seasonId}.csv`
-- Skaters split: `data/gbgs/advanced/skater/{playerId}_{seasonId}.csv`
 - Goalies aggregate: `data/gbgs/advanced/goalies_{seasonId}.csv`
-- Goalies split: `data/gbgs/advanced/goalie/{playerId}_{seasonId}.csv`
 - Teams aggregate: `data/gbgs/advanced/teams_{seasonId}.csv`
-- Teams split: `data/gbgs/advanced/team/{teamId}_{seasonId}.csv`
 
-Aggregate files keep the entity ID column. Split files drop it because it is already encoded in the filename.
+GBGs are aggregate-only. There are no split per-entity GBG files.
 
 ## General Rules
 
@@ -61,6 +55,7 @@ Aggregate files keep the entity ID column. Split files drop it because it is alr
 
 - `playerId`: skater ID. Present only in the aggregate skater file.
 - `gameId`: NHL game ID.
+- `teamId`: team ID for the skater in that game.
 - `gameDate`: game date.
 
 ### Skater Metrics
@@ -130,6 +125,7 @@ Metrics:
 
 - `playerId`: goalie ID. Present only in the aggregate goalie file.
 - `gameId`: NHL game ID.
+- `teamId`: team ID for the goalie in that game.
 - `gameDate`: game date.
 
 ### Goalie Metrics
@@ -245,6 +241,7 @@ Identifier columns:
 
 - `playerId`: skater ID. Present only in the aggregate skater file.
 - `gameId`: NHL game ID.
+- `teamId`: team ID for the skater in that game.
 
 Metrics:
 
@@ -260,6 +257,7 @@ Identifier columns:
 
 - `playerId`: goalie ID. Present only in the aggregate goalie file.
 - `gameId`: NHL game ID.
+- `teamId`: team ID for the goalie in that game.
 
 Metrics:
 

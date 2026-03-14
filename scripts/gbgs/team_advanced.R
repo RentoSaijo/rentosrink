@@ -68,15 +68,8 @@ teams <- build_gbg_output(
 )
 
 aggregate_path <- file.path("data", "gbgs", "advanced", paste0("teams_", SEASON, ".csv"))
-split_dir <- file.path("data", "gbgs", "advanced", "team")
-
-write_split_entity_files(
-  data = teams,
-  id_col = "teamId",
-  season_id = SEASON,
-  aggregate_path = aggregate_path,
-  split_dir = split_dir
-)
+dir.create(dirname(aggregate_path), recursive = TRUE, showWarnings = FALSE)
+readr::write_csv(teams, aggregate_path)
 
 cat("Wrote season file:", aggregate_path, "\n")
 cat(

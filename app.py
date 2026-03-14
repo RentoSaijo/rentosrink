@@ -1,11 +1,14 @@
 # Load libraries.
 import streamlit as st
 
-# Logo
-st.logo(image = 'assets/Letter.png', size = 'large')
+from utils import file_data_url
+
 
 # Set default.
 st.set_page_config(layout = 'wide')
+
+# Logo
+st.logo(image = file_data_url('assets/Letter.png'), size = 'large')
 st.markdown(
     '''
     <style>

@@ -414,30 +414,9 @@ teams_out <- ensure_cols(teams_out, expected_cols) %>%
 
 out_dir <- file.path("data", "gbgs", "basic")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-split_dir <- file.path(out_dir, "team")
-dir.create(split_dir, recursive = TRUE, showWarnings = FALSE)
 
 season_path <- file.path(out_dir, paste0("teams_", SEASON, ".csv"))
 readr::write_csv(teams_out, season_path)
-
-if (nrow(teams_out) > 0) {
-  team_ids <- sort(unique(teams_out$teamId))
-  wrong_paths <- file.path(out_dir, paste0(team_ids, "_", SEASON, ".csv"))
-  wrong_paths <- wrong_paths[file.exists(wrong_paths)]
-  if (length(wrong_paths) > 0L) {
-    invisible(file.remove(wrong_paths))
-  }
-  for (team_id in team_ids) {
-    team_path <- file.path(split_dir, paste0(team_id, "_", SEASON, ".csv"))
-    readr::write_csv(
-      teams_out %>%
-        dplyr::filter(teamId == team_id) %>%
-        dplyr::arrange(gameDate, gameId) %>%
-        dplyr::select(-teamId),
-      team_path
-    )
-  }
-}
 
 cat("Wrote season file:", season_path, "\n")
 cat("Rows:", nrow(teams_out), " Teams:", length(unique(teams_out$teamId)), "\n")
