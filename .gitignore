@@ -10,3 +10,4 @@ __pycache__/
 .devcontainer
 *.parquet
 models/xG/data/
+models/contracts/legacy/
