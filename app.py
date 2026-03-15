@@ -39,6 +39,11 @@ expected_goals_page = st.Page(
     title = 'Expected Goal',
     icon  = ':material/model_training:'
 )
+old_xg_model_page = st.Page(
+    page  = 'views/old_xg_model.py',
+    title = 'Old xG Model',
+    icon  = ':material/archive:'
+)
 contract_projection_page = st.Page(
     page  = 'views/contract_projection.py',
     title = 'Contract Projection',
@@ -94,6 +99,7 @@ pg = st.navigation(
         ],
         'Models': [expected_goals_page, contract_projection_page],
         'Articles': [xg_article_page],
+        'Archive': [old_xg_model_page],
     },
     position='hidden',
 )
@@ -118,5 +124,8 @@ with st.sidebar:
 
     st.caption('Articles')
     st.page_link(xg_article_page, label='Example Article', icon=':material/article:')
+
+    with st.expander('Archive', expanded=False):
+        st.page_link(old_xg_model_page, label='Old xG Model', icon=':material/archive:')
 
 pg.run()
