@@ -59,6 +59,10 @@ def load_games():
     path = 'data/games.csv'
     return _read_csv(path, _file_cache_token(path))
 
+def load_teams():
+    path = 'data/teams.csv'
+    return _read_csv(path, _file_cache_token(path))
+
 def load_contract_projection(season = 20262027):
     path = f'data/contract_projection_{season}.csv'
     return _read_csv(path, _file_cache_token(path))

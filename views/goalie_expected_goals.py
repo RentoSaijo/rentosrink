@@ -1,20 +1,32 @@
 # Import libraries.
 import datetime as dt
+import os
 
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from utils import (
+    file_data_url,
     load_biographies,
     load_games,
     load_gbgs_goalie_advanced,
     load_gbgs_goalie_basic,
+    load_teams,
 )
 
 
 SEASON_START = 20112012
 SEASON_END = 20252026
-TABLE_HEIGHT = 35 * 16
+TABLE_HEIGHT = int(35 * 4.5)
+CHART_HEIGHT = 500
+CHART_COUNT = 6
+POSITIVE_BAR_COLOR = 'rgba(90,220,120,0.9)'
+NEGATIVE_BAR_COLOR = 'rgba(255,80,72,0.9)'
+NEUTRAL_BAR_COLOR = 'rgba(209,229,240,0.85)'
+LOGO_PATH_TEMPLATE = 'assets/logos/{team_id}.png'
+LABEL_PAD = '\u00A0' * 6
 
 GAME_TYPES = {'Regular Season': 2, 'Playoffs': 3}
 SITUATIONS = {
@@ -29,6 +41,9 @@ GBGS_STRENGTHS = {
     'sh': ['sh'],
     'all': ['ev', 'pp', 'sh'],
 }
+STATISTICS = ['GA', 'xGA', 'GSAx']
+DEFAULT_STATISTIC = 'GSAx'
+LOWER_IS_BETTER = {'GA', 'xGA'}
 
 
 def _season_ids(start: int, end: int) -> list[str]:
@@ -99,6 +114,37 @@ def _prepare_advanced(df_in: pd.DataFrame) -> pd.DataFrame:
     return advanced
 
 
+def _prepare_teams(df_in: pd.DataFrame) -> pd.DataFrame:
+    teams = df_in.copy()
+    teams['teamId'] = pd.to_numeric(teams.get('teamId'), errors='coerce')
+    teams = teams.dropna(subset=['teamId']).copy()
+    teams['teamId'] = teams['teamId'].astype('int64')
+    teams['teamTriCode'] = teams.get('teamTriCode', teams.get('teamTriCodeRaw', '')).astype(str).str.strip().str.upper()
+    teams = teams.loc[teams['teamTriCode'] != ''].copy()
+    return teams[['teamId', 'teamTriCode']].drop_duplicates().sort_values('teamTriCode').reset_index(drop=True)
+
+
+def _player_team_map(df_in: pd.DataFrame) -> pd.DataFrame:
+    if df_in.empty or 'teamId' not in df_in.columns:
+        return pd.DataFrame(columns=['playerId', 'teamId'])
+    team_rows = df_in[['playerId', 'teamId', 'gameId']].copy()
+    team_rows['playerId'] = pd.to_numeric(team_rows['playerId'], errors='coerce')
+    team_rows['teamId'] = pd.to_numeric(team_rows['teamId'], errors='coerce')
+    team_rows['gameId'] = pd.to_numeric(team_rows['gameId'], errors='coerce')
+    team_rows = team_rows.dropna(subset=['playerId', 'teamId', 'gameId']).copy()
+    if team_rows.empty:
+        return pd.DataFrame(columns=['playerId', 'teamId'])
+    team_rows['playerId'] = team_rows['playerId'].astype('int64')
+    team_rows['teamId'] = team_rows['teamId'].astype('int64')
+    team_rows['gameId'] = team_rows['gameId'].astype('int64')
+    counts = (
+        team_rows.groupby(['playerId', 'teamId'], as_index=False)
+        .agg(games=('gameId', 'nunique'), latestGameId=('gameId', 'max'))
+        .sort_values(['playerId', 'games', 'latestGameId', 'teamId'], ascending=[True, False, False, True])
+    )
+    return counts.drop_duplicates('playerId')[['playerId', 'teamId']].reset_index(drop=True)
+
+
 @st.cache_data
 def _load_page_data(season_id: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     games = _prepare_games(load_games())
@@ -129,7 +175,7 @@ def _sum_metric(df_in: pd.DataFrame, base_metric: str, situation_code: str) -> p
 def _aggregate_players(df_in: pd.DataFrame) -> pd.DataFrame:
     if df_in.empty:
         return pd.DataFrame(columns=['playerId'])
-    numeric_cols = [col for col in df_in.columns if col not in {'playerId', 'gameId', 'gameDate', 'gameTypeId', 'seasonId'}]
+    numeric_cols = [col for col in df_in.columns if col not in {'playerId', 'gameId', 'gameDate', 'gameTypeId', 'seasonId', 'teamId', 'teamId_adv'}]
     return df_in.groupby('playerId', as_index=False)[numeric_cols].sum()
 
 
@@ -154,16 +200,152 @@ def _clamp_date_range(value, min_date: dt.date, max_date: dt.date) -> tuple[dt.d
     return start, end
 
 
+def _fmt_value(value: float, statistic: str) -> float | int:
+    if pd.isna(value):
+        return 0
+    if statistic == 'GA':
+        return int(round(float(value)))
+    return round(float(value), 1)
+
+
+def _stat_ascending(statistic: str) -> bool:
+    return statistic in LOWER_IS_BETTER
+
+
+def _slider_max(series: pd.Series) -> int:
+    if series.empty:
+        return 0
+    return max(0, int(pd.to_numeric(series, errors='coerce').fillna(0).max()))
+
+
+def _slider_default_half_max(series: pd.Series) -> int:
+    return _slider_max(series) // 2
+
+
+def _games_slider(max_value: int, default_value: int, key: str) -> int:
+    if max_value <= 0:
+        st.slider('Minimum Games Played', min_value=0, max_value=1, value=0, step=1, disabled=True, key=key)
+        return 0
+    return st.slider(
+        'Minimum Games Played',
+        min_value=0,
+        max_value=max_value,
+        value=min(default_value, max_value),
+        step=1,
+        key=key,
+    )
+
+
+def _team_logo_data_url(team_id) -> str | None:
+    if pd.isna(team_id):
+        return None
+    logo_path = LOGO_PATH_TEMPLATE.format(team_id=int(team_id))
+    if not os.path.exists(logo_path):
+        return None
+    return file_data_url(logo_path)
+
+
+def _chart_player_label(name: str) -> str:
+    return f'{str(name)}{LABEL_PAD}'
+
+
+def _add_team_logos(fig: go.Figure, chart_data: pd.DataFrame) -> None:
+    if 'teamId' not in chart_data.columns:
+        return
+    for _, row in chart_data.iterrows():
+        logo_source = _team_logo_data_url(row['teamId'])
+        if logo_source is None:
+            continue
+        fig.add_layout_image(
+            dict(
+                source=logo_source,
+                xref='paper',
+                yref='y',
+                x=-0.028,
+                y=row['displayLabel'],
+                sizex=0.1,
+                sizey=0.82,
+                xanchor='center',
+                yanchor='middle',
+                sizing='contain',
+                layer='above',
+            )
+        )
+
+
+def _render_bar_chart(df_in: pd.DataFrame, statistic: str, title: str, x_range: tuple[float, float] | None = None) -> None:
+    chart_cols = ['playerMenuName', statistic]
+    if 'teamId' in df_in.columns:
+        chart_cols.append('teamId')
+    chart_data = df_in[chart_cols].dropna(subset=['playerMenuName', statistic]).copy().iloc[::-1].reset_index(drop=True)
+    if chart_data.empty:
+        st.info(f'No data available for {title.lower()}.')
+        return
+    chart_data['displayLabel'] = chart_data['playerMenuName'].astype(str).map(_chart_player_label)
+
+    labels = {'playerMenuName': '', statistic: statistic}
+    if statistic == 'GSAx':
+        values = pd.to_numeric(chart_data[statistic], errors='coerce').fillna(0.0)
+        colors = [
+            POSITIVE_BAR_COLOR if value > 0.0 else NEGATIVE_BAR_COLOR if value < 0.0 else NEUTRAL_BAR_COLOR
+            for value in values
+        ]
+        fig = go.Figure(
+            go.Bar(
+                x=values.tolist(),
+                base=[0.0] * len(chart_data),
+                y=chart_data['displayLabel'].tolist(),
+                orientation='h',
+                marker=dict(color=colors),
+                customdata=chart_data[['playerMenuName', statistic]].to_numpy(),
+                text=[f'{value:.1f}' for value in values],
+                textposition='outside',
+                hovertemplate='%{customdata[0]}<br>%{customdata[1]:.1f}<extra></extra>',
+            )
+        )
+        fig.add_vline(x=0.0, line_dash='dash', line_color='#4a4a4a', line_width=2)
+        fig.update_xaxes(title_text=statistic)
+    else:
+        fig = px.bar(
+            chart_data,
+            x=statistic,
+            y='displayLabel',
+            orientation='h',
+            labels=labels,
+            title=title,
+            color_discrete_sequence=['#4c78a8'],
+            text=statistic,
+            custom_data=['playerMenuName'],
+        )
+        value_format = '%{x:.1f}' if statistic != 'GA' else '%{x:.0f}'
+        fig.update_traces(hovertemplate=f'%{{customdata[0]}}<br>{value_format}<extra></extra>', texttemplate=value_format, textposition='outside')
+    fig.update_layout(
+        height=CHART_HEIGHT,
+        margin=dict(l=108, r=8, t=48, b=8),
+        showlegend=False,
+        title_x=0.5,
+        title_text=title,
+    )
+    if x_range is not None:
+        fig.update_xaxes(range=list(x_range))
+    fig.update_xaxes(fixedrange=True)
+    fig.update_yaxes(fixedrange=True, automargin=True, tickfont=dict(size=18))
+    fig.update_traces(cliponaxis=False)
+    _add_team_logos(fig, chart_data)
+    st.plotly_chart(fig, width='stretch', config={'displayModeBar': True})
+
+
 season_options = [_season_label(season_id) for season_id in reversed(_season_ids(SEASON_START, SEASON_END))]
 season_lookup = {label: label.replace('-', '') for label in season_options}
 
-c_season, c_game, c_date, c_sit = st.columns(4, gap='small', vertical_alignment='top')
+c_season, c_game, c_date, c_sit, c_stat = st.columns(5, gap='small', vertical_alignment='top')
 
 with c_season:
     season_label = st.selectbox('Season', season_options, index=0, key='geg_season_label')
 season_id = season_lookup[season_label]
 
 season_games, season_goalie_games, bio = _load_page_data(season_id)
+teams = _prepare_teams(load_teams())
 
 available_game_types = [label for label, game_type_id in GAME_TYPES.items() if game_type_id in set(season_games['gameTypeId'].unique().tolist())]
 if not available_game_types:
@@ -216,6 +398,8 @@ with c_date:
 
 with c_sit:
     situation_label = st.selectbox('Situation', list(SITUATIONS.keys()), index=0, key='geg_situation_label')
+with c_stat:
+    statistic_label = st.selectbox('Statistic', STATISTICS, index=STATISTICS.index(DEFAULT_STATISTIC), key='geg_statistic_label')
 
 situation_code = SITUATIONS[situation_label]
 
@@ -230,23 +414,84 @@ else:
     )
 
 filtered_games = season_goalie_games.loc[season_goalie_games['gameId'].isin(selected_game_ids)].copy()
+available_team_ids = (
+    pd.to_numeric(season_goalie_games['teamId'], errors='coerce')
+    .dropna()
+    .astype('int64')
+    .unique()
+    .tolist()
+    if 'teamId' in season_goalie_games.columns else []
+)
+available_teams = teams.loc[teams['teamId'].isin(available_team_ids)].copy().sort_values('teamTriCode')
+team_options = available_teams['teamTriCode'].tolist()
+filter_games_col, filter_team_col, filter_download_col = st.columns([1, 1, 0.9], gap='small', vertical_alignment='bottom')
+team_filter_key = 'geg_team_filter'
+valid_selected_teams = [team for team in st.session_state.get(team_filter_key, []) if team in team_options]
+if team_filter_key in st.session_state and st.session_state.get(team_filter_key) != valid_selected_teams:
+    st.session_state[team_filter_key] = valid_selected_teams
+with filter_team_col:
+    selected_teams = st.multiselect('Teams', options=team_options, placeholder='Select teams; default is all.', key=team_filter_key)
+selected_team_ids = set(available_teams.loc[available_teams['teamTriCode'].isin(selected_teams), 'teamId'].astype('int64').tolist())
+if selected_team_ids:
+    filtered_games = filtered_games.loc[pd.to_numeric(filtered_games['teamId'], errors='coerce').isin(selected_team_ids)].copy()
+
 goalie_totals = _aggregate_players(filtered_games)
+games_played = filtered_games.groupby('playerId')['gameId'].nunique().rename('gamesPlayed').reset_index()
+player_teams = _player_team_map(filtered_games)
+goalie_totals = goalie_totals.merge(games_played, on='playerId', how='left')
+goalie_totals = goalie_totals.merge(player_teams, on='playerId', how='left')
+goalie_totals['gamesPlayed'] = pd.to_numeric(goalie_totals['gamesPlayed'], errors='coerce').fillna(0).astype(int)
 goalie_totals['shotsAgainst'] = _sum_metric(goalie_totals, 'sA', situation_code)
 goalie_totals = goalie_totals.loc[goalie_totals['shotsAgainst'] > 0].copy()
 
 goalie_totals = goalie_totals.merge(bio, on='playerId', how='left')
 goalie_totals['playerMenuName'] = goalie_totals['playerMenuName'].fillna(goalie_totals['playerId'].astype(str))
+
+games_slider_max = _slider_max(goalie_totals['gamesPlayed']) if 'gamesPlayed' in goalie_totals else 0
+
+with filter_games_col:
+    min_games_played = _games_slider(games_slider_max, _slider_default_half_max(goalie_totals['gamesPlayed']), 'geg_min_games_played')
+
+goalie_totals = goalie_totals.loc[goalie_totals['gamesPlayed'] >= min_games_played].copy()
+
 goalie_totals['GA'] = _sum_metric(goalie_totals, 'gA', situation_code)
 goalie_totals['xGA'] = _sum_metric(goalie_totals, 'xGA', situation_code)
 goalie_totals['GSAx'] = goalie_totals['xGA'] - goalie_totals['GA']
 
-table = goalie_totals[['playerMenuName', 'GA', 'xGA', 'GSAx']].copy()
-table = table.sort_values(['GSAx', 'playerMenuName'], ascending=[False, True]).reset_index(drop=True)
-table['GA'] = table['GA'].map(lambda value: int(round(float(value))) if pd.notna(value) else 0)
-table['xGA'] = table['xGA'].map(lambda value: round(float(value), 1) if pd.notna(value) else 0.0)
-table['GSAx'] = table['GSAx'].map(lambda value: round(float(value), 1) if pd.notna(value) else 0.0)
+ranked_goalies = goalie_totals[['playerMenuName', 'teamId', *STATISTICS]].copy()
+ascending = _stat_ascending(statistic_label)
+ranked_goalies = ranked_goalies.sort_values([statistic_label, 'playerMenuName'], ascending=[ascending, True]).reset_index(drop=True)
+
+gsax_bound = float(pd.to_numeric(ranked_goalies.get('GSAx'), errors='coerce').abs().max()) if 'GSAx' in ranked_goalies else 0.0
+gsax_bound = max(gsax_bound, 1.0)
+gsax_padding = 5.0
+gsax_range = (-(gsax_bound + gsax_padding), gsax_bound + gsax_padding)
+
+top_5 = ranked_goalies.head(CHART_COUNT).copy()
+bottom_5 = ranked_goalies.sort_values([statistic_label, 'playerMenuName'], ascending=[not ascending, True]).head(CHART_COUNT)
+
+table = ranked_goalies.drop(columns=['teamId'], errors='ignore').copy()
+for statistic in STATISTICS:
+    table[statistic] = table[statistic].map(lambda value, stat=statistic: _fmt_value(value, stat))
+
+with filter_download_col:
+    st.download_button(
+        'Download Full List',
+        data=table.to_csv(index=False).encode('utf-8'),
+        file_name=f'goalie_expected_goals_{season_id}_{game_type_id}_{situation_code}.csv',
+        mime='text/csv',
+        width='stretch',
+        disabled=table.empty,
+        key='geg_download_full_list',
+    )
 
 if table.empty:
     st.info('No goalies available for this selection.')
 else:
-    st.dataframe(table, width='stretch', hide_index=True, height=TABLE_HEIGHT)
+    chart_left, chart_right = st.columns(2, gap='small')
+    with chart_left:
+        with st.container(border=True):
+            _render_bar_chart(top_5, statistic_label, f'Top {CHART_COUNT} by {statistic_label}', x_range=gsax_range if statistic_label == 'GSAx' else None)
+    with chart_right:
+        with st.container(border=True):
+            _render_bar_chart(bottom_5, statistic_label, f'Bottom {CHART_COUNT} by {statistic_label}', x_range=gsax_range if statistic_label == 'GSAx' else None)
