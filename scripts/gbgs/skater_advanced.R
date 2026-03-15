@@ -6,6 +6,19 @@ SEASON <- as.integer(season_env)
 source(file.path("scripts", "sbss", "shared.R"))
 source(file.path("scripts", "gbgs", "shared_advanced.R"))
 
+season_game_ids <- readr::read_csv(
+  file.path("data", "games.csv"),
+  show_col_types = FALSE
+) %>%
+  dplyr::transmute(
+    gameId = as.integer(gameId),
+    seasonId = as.integer(seasonId)
+  ) %>%
+  dplyr::filter(seasonId == SEASON, !is.na(gameId)) %>%
+  dplyr::pull(gameId) %>%
+  unique() %>%
+  sort()
+
 cat("Loading skater GBG base...\n")
 base <- readr::read_csv(
   file.path("data", "gbgs", "basic", paste0("skaters_", SEASON, ".csv")),
@@ -15,7 +28,8 @@ base <- readr::read_csv(
     playerId = as.integer(playerId),
     gameId = as.integer(gameId),
     teamId = as.integer(teamId)
-  )
+  ) %>%
+  dplyr::filter(gameId %in% season_game_ids)
 
 skater_ids <- sort(unique(base$playerId))
 
@@ -28,11 +42,13 @@ sbs <- readr::read_csv(
     shooterPlayerId = as.integer(shooterPlayerId),
     gameId = as.integer(gameId),
     eventId = as.integer(eventId),
-    strength = normalize_gbg_strength(strengthState),
+    strengthFor = normalize_gbg_strength(strengthState),
     xG = as.numeric(xG),
     goaliePlayerId = as.integer(goaliePlayerId)
   ) %>%
-  dplyr::filter(strength %in% c("ev", "pp", "sh"))
+  dplyr::filter(gameId %in% season_game_ids) %>%
+  dplyr::mutate(strengthAgainst = flip_strength_code(strengthFor)) %>%
+  dplyr::filter(strengthFor %in% c("ev", "pp", "sh"))
 
 cat("Loading skater on-ice context...\n")
 attempt_context <- prepare_sbss_shot_attempts(SEASON) %>%
@@ -41,10 +57,13 @@ attempt_context <- prepare_sbss_shot_attempts(SEASON) %>%
     eventId = as.integer(eventId),
     playerIdsFor = playerIdsFor,
     playerIdsAgainst = playerIdsAgainst
-  )
+  ) %>%
+  dplyr::filter(gameId %in% season_game_ids)
 
 attempts <- sbs %>%
   dplyr::left_join(attempt_context, by = c("gameId", "eventId"))
+
+ensure_base_game_coverage(base, attempts, "Skater GBGS advanced")
 
 metric_long <- dplyr::bind_rows(
   summarise_entity_metric(
@@ -52,7 +71,7 @@ metric_long <- dplyr::bind_rows(
     id_col = "shooterPlayerId",
     metric = "ixGF",
     value_col = "xG",
-    strength_col = "strength",
+    strength_col = "strengthFor",
     valid_ids = skater_ids,
     out_id_col = "playerId"
   ),
@@ -61,7 +80,7 @@ metric_long <- dplyr::bind_rows(
     ids_col = "playerIdsFor",
     metric = "oxGF",
     value_col = "xG",
-    strength_col = "strength",
+    strength_col = "strengthFor",
     valid_ids = skater_ids
   ),
   summarise_list_metric(
@@ -69,7 +88,7 @@ metric_long <- dplyr::bind_rows(
     ids_col = "playerIdsAgainst",
     metric = "oxGA",
     value_col = "xG",
-    strength_col = "strength",
+    strength_col = "strengthAgainst",
     valid_ids = skater_ids
   )
 )

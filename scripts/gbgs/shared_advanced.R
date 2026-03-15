@@ -22,6 +22,15 @@ normalize_gbg_strength <- function(x) {
   )
 }
 
+flip_strength_code <- function(x) {
+  dplyr::case_when(
+    x == "pp" ~ "sh",
+    x == "sh" ~ "pp",
+    x == "ev" ~ "ev",
+    TRUE ~ NA_character_
+  )
+}
+
 make_expected_metric_cols <- function(
     metrics,
     strengths = c("ev", "pp", "sh")
@@ -120,6 +129,35 @@ summarise_list_metric <- function(
     dplyr::group_by(.data[[out_id_col]], gameId, strength) %>%
     dplyr::summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
     dplyr::mutate(metric = metric, .before = value)
+}
+
+ensure_base_game_coverage <- function(base, attempts, label) {
+  base_games <- base %>%
+    dplyr::transmute(gameId = as.integer(gameId)) %>%
+    dplyr::filter(!is.na(gameId)) %>%
+    dplyr::distinct()
+
+  attempt_games <- attempts %>%
+    dplyr::transmute(gameId = as.integer(gameId)) %>%
+    dplyr::filter(!is.na(gameId)) %>%
+    dplyr::distinct()
+
+  missing_games <- base_games %>%
+    dplyr::anti_join(attempt_games, by = "gameId") %>%
+    dplyr::pull(gameId)
+
+  if (length(missing_games) > 0L) {
+    stop(
+      sprintf(
+        "%s is missing sbss coverage for %d base games. First missing gameIds: %s",
+        label,
+        length(missing_games),
+        paste(utils::head(sort(missing_games), 10L), collapse = ", ")
+      )
+    )
+  }
+
+  invisible(NULL)
 }
 
 build_gbg_output <- function(base, metric_long, id_cols, metrics) {

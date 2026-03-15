@@ -799,6 +799,26 @@ build_goalie_team_lookup <- function(scored_attempts) {
     dplyr::distinct(gameId, goaliePlayerId, .keep_all = TRUE)
 }
 
+sbss_expected_event_keys <- function(attempts, player_col) {
+  attempts %>%
+    dplyr::filter(!isShootout) %>%
+    dplyr::filter(!is.na(.data[[player_col]])) %>%
+    dplyr::transmute(
+      gameId = as.integer(gameId),
+      eventId = as.integer(eventId)
+    ) %>%
+    dplyr::distinct()
+}
+
+sbss_existing_event_keys <- function(existing) {
+  existing %>%
+    dplyr::transmute(
+      gameId = as.integer(gameId),
+      eventId = as.integer(eventId)
+    ) %>%
+    dplyr::distinct()
+}
+
 rebuild_skater_sbss_from_existing <- function(season_id) {
   existing_path <- file.path("data", "sbss", paste0("skaters_", season_id, ".csv"))
   if (!file.exists(existing_path)) {
@@ -808,6 +828,22 @@ rebuild_skater_sbss_from_existing <- function(season_id) {
 
   existing <- readr::read_csv(existing_path, show_col_types = FALSE)
   attempts <- prepare_sbss_shot_attempts(season_id)
+  missing_events <- sbss_expected_event_keys(attempts, "shootingPlayerId") %>%
+    dplyr::anti_join(sbss_existing_event_keys(existing), by = c("gameId", "eventId"))
+
+  if (nrow(missing_events) > 0L) {
+    cat(
+      sprintf(
+        "Existing skater sbss for %s is missing %d events across %d games; rebuilding from current attempts.\n",
+        season_id,
+        nrow(missing_events),
+        dplyr::n_distinct(missing_events$gameId)
+      )
+    )
+    scored_attempts <- build_scored_shot_attempts(season_id)
+    return(build_skater_sbss(scored_attempts))
+  }
+
   goalie_team_lookup <- build_goalie_team_lookup(attempts)
 
   context <- attempts %>%
@@ -855,6 +891,22 @@ rebuild_goalie_sbss_from_existing <- function(season_id) {
 
   existing <- readr::read_csv(existing_path, show_col_types = FALSE)
   attempts <- prepare_sbss_shot_attempts(season_id)
+  missing_events <- sbss_expected_event_keys(attempts, "goaliePlayerIdAgainst") %>%
+    dplyr::anti_join(sbss_existing_event_keys(existing), by = c("gameId", "eventId"))
+
+  if (nrow(missing_events) > 0L) {
+    cat(
+      sprintf(
+        "Existing goalie sbss for %s is missing %d events across %d games; rebuilding from current attempts.\n",
+        season_id,
+        nrow(missing_events),
+        dplyr::n_distinct(missing_events$gameId)
+      )
+    )
+    scored_attempts <- build_scored_shot_attempts(season_id)
+    return(build_goalie_sbss(scored_attempts))
+  }
+
   goalie_team_lookup <- build_goalie_team_lookup(attempts)
 
   context <- attempts %>%

@@ -6,6 +6,19 @@ SEASON <- as.integer(season_env)
 source(file.path("scripts", "sbss", "shared.R"))
 source(file.path("scripts", "gbgs", "shared_advanced.R"))
 
+season_game_ids <- readr::read_csv(
+  file.path("data", "games.csv"),
+  show_col_types = FALSE
+) %>%
+  dplyr::transmute(
+    gameId = as.integer(gameId),
+    seasonId = as.integer(seasonId)
+  ) %>%
+  dplyr::filter(seasonId == SEASON, !is.na(gameId)) %>%
+  dplyr::pull(gameId) %>%
+  unique() %>%
+  sort()
+
 cat("Loading goalie GBG base...\n")
 base <- readr::read_csv(
   file.path("data", "gbgs", "basic", paste0("goalies_", SEASON, ".csv")),
@@ -15,7 +28,8 @@ base <- readr::read_csv(
     playerId = as.integer(playerId),
     gameId = as.integer(gameId),
     teamId = as.integer(teamId)
-  )
+  ) %>%
+  dplyr::filter(gameId %in% season_game_ids)
 
 goalie_ids <- sort(unique(base$playerId))
 
@@ -27,17 +41,20 @@ attempts <- readr::read_csv(
   dplyr::transmute(
     goaliePlayerId = as.integer(goaliePlayerId),
     gameId = as.integer(gameId),
-    strength = normalize_gbg_strength(strengthState),
+    strengthAgainst = flip_strength_code(normalize_gbg_strength(strengthState)),
     xG = as.numeric(xG)
   ) %>%
-  dplyr::filter(strength %in% c("ev", "pp", "sh"))
+  dplyr::filter(gameId %in% season_game_ids) %>%
+  dplyr::filter(strengthAgainst %in% c("ev", "pp", "sh"))
+
+ensure_base_game_coverage(base, attempts, "Goalie GBGS advanced")
 
 metric_long <- summarise_entity_metric(
   attempts,
   id_col = "goaliePlayerId",
   metric = "xGA",
   value_col = "xG",
-  strength_col = "strength",
+  strength_col = "strengthAgainst",
   valid_ids = goalie_ids,
   out_id_col = "playerId"
 )

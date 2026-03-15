@@ -6,6 +6,19 @@ SEASON <- as.integer(season_env)
 source(file.path("scripts", "sbss", "shared.R"))
 source(file.path("scripts", "gbgs", "shared_advanced.R"))
 
+season_game_ids <- readr::read_csv(
+  file.path("data", "games.csv"),
+  show_col_types = FALSE
+) %>%
+  dplyr::transmute(
+    gameId = as.integer(gameId),
+    seasonId = as.integer(seasonId)
+  ) %>%
+  dplyr::filter(seasonId == SEASON, !is.na(gameId)) %>%
+  dplyr::pull(gameId) %>%
+  unique() %>%
+  sort()
+
 cat("Loading team GBG base...\n")
 base <- readr::read_csv(
   file.path("data", "gbgs", "basic", paste0("teams_", SEASON, ".csv")),
@@ -14,7 +27,8 @@ base <- readr::read_csv(
   dplyr::transmute(
     teamId = as.integer(teamId),
     gameId = as.integer(gameId)
-  )
+  ) %>%
+  dplyr::filter(gameId %in% season_game_ids)
 
 opponents <- base %>%
   dplyr::distinct(gameId, teamId) %>%
@@ -34,14 +48,18 @@ attempts <- readr::read_csv(
   dplyr::transmute(
     gameId = as.integer(gameId),
     teamIdFor = as.integer(shooterTeamId),
-    strength = normalize_gbg_strength(strengthState),
+    strengthFor = normalize_gbg_strength(strengthState),
     xG = as.numeric(xG)
   ) %>%
-  dplyr::filter(strength %in% c("ev", "pp", "sh"))
+  dplyr::filter(gameId %in% season_game_ids) %>%
+  dplyr::mutate(strengthAgainst = flip_strength_code(strengthFor)) %>%
+  dplyr::filter(strengthFor %in% c("ev", "pp", "sh"))
 
 attempts_against <- attempts %>%
   dplyr::left_join(opponents, by = c("gameId", "teamIdFor")) %>%
   dplyr::rename(teamId = teamIdAgainst)
+
+ensure_base_game_coverage(base, attempts, "Team GBGS advanced")
 
 metric_long <- dplyr::bind_rows(
   summarise_entity_metric(
@@ -49,14 +67,14 @@ metric_long <- dplyr::bind_rows(
     id_col = "teamId",
     metric = "xGF",
     value_col = "xG",
-    strength_col = "strength"
+    strength_col = "strengthFor"
   ),
   summarise_entity_metric(
     attempts_against,
     id_col = "teamId",
     metric = "xGA",
     value_col = "xG",
-    strength_col = "strength"
+    strength_col = "strengthAgainst"
   )
 )
 

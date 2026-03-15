@@ -20,7 +20,7 @@ POSITIVE_BAR_COLOR = 'rgba(90,220,120,0.9)'
 NEGATIVE_BAR_COLOR = 'rgba(255,80,72,0.9)'
 NEUTRAL_BAR_COLOR = 'rgba(209,229,240,0.85)'
 LOGO_PATH_TEMPLATE = 'assets/logos/{team_id}.png'
-LABEL_PAD = '\u00A0' * 6
+LABEL_PAD = '\u00A0' * 4
 
 GAME_TYPES = {'Regular Season': 2, 'Playoffs': 3}
 CATEGORIES = {'Actual': 'act', 'Per 60': 'p60'}
@@ -232,18 +232,72 @@ def _slider_default_half_max(series: pd.Series) -> int:
     return _slider_max(series) // 2
 
 
-def _games_slider(max_value: int, default_value: int, key: str) -> int:
+def _nonzero_slider_values(series: pd.Series) -> pd.Series:
+    if series.empty:
+        return pd.Series(dtype=float)
+    values = pd.to_numeric(series, errors='coerce').fillna(0.0)
+    return values.loc[values > 0]
+
+
+def _slider_default_nonzero_average(series: pd.Series) -> int:
+    values = _nonzero_slider_values(series)
+    if values.empty:
+        return 0
+    return max(0, int(round(float(values.mean()))))
+
+
+def _minutes_slider_default(series: pd.Series, situation_code: str) -> int:
+    return _slider_default_nonzero_average(series)
+
+
+def _threshold_slider(label: str, max_value: int, default_value: int, key: str) -> int:
     if max_value <= 0:
-        st.slider('Minimum Games Played', min_value=0, max_value=1, value=0, step=1, disabled=True, key=key)
+        st.slider(label, min_value=0, max_value=1, value=0, step=1, disabled=True, key=key)
         return 0
     return st.slider(
-        'Minimum Games Played',
+        label,
         min_value=0,
         max_value=max_value,
         value=min(default_value, max_value),
         step=1,
         key=key,
     )
+
+
+def _midpoint_axis_range(
+    series: pd.Series,
+    midpoint: float,
+    padding: float,
+    lower_bound: float | None = None,
+    upper_bound: float | None = None,
+) -> tuple[float, float]:
+    values = pd.to_numeric(series, errors='coerce').dropna()
+    if values.empty:
+        lower = midpoint - padding
+        upper = midpoint + padding
+    else:
+        lower_delta = float((midpoint - values.loc[values < midpoint]).max()) if (values < midpoint).any() else 0.0
+        upper_delta = float((values.loc[values > midpoint] - midpoint).max()) if (values > midpoint).any() else 0.0
+
+        if lower_delta > 0 and upper_delta > 0:
+            span = max(lower_delta, upper_delta) + padding
+            lower = midpoint - span
+            upper = midpoint + span
+        elif upper_delta > 0:
+            lower = midpoint - padding
+            upper = midpoint + upper_delta + padding
+        elif lower_delta > 0:
+            lower = midpoint - lower_delta - padding
+            upper = midpoint + padding
+        else:
+            lower = midpoint - padding
+            upper = midpoint + padding
+
+    if lower_bound is not None:
+        lower = max(lower_bound, lower)
+    if upper_bound is not None:
+        upper = min(upper_bound, upper)
+    return float(lower), float(upper)
 
 
 def _team_logo_data_url(team_id) -> str | None:
@@ -271,10 +325,10 @@ def _add_team_logos(fig: go.Figure, chart_data: pd.DataFrame) -> None:
                 source=logo_source,
                 xref='paper',
                 yref='y',
-                x=-0.028,
+                x=-0.02,
                 y=row['displayLabel'],
-                sizex=0.1,
-                sizey=0.82,
+                sizex=0.06,
+                sizey=0.52,
                 xanchor='center',
                 yanchor='middle',
                 sizing='contain',
@@ -331,7 +385,7 @@ def _render_bar_chart(df_in: pd.DataFrame, statistic: str, title: str, x_range: 
         fig.update_traces(hovertemplate=f'%{{customdata[0]}}<br>{value_format}<extra></extra>', texttemplate=value_format, textposition='outside')
     fig.update_layout(
         height=CHART_HEIGHT,
-        margin=dict(l=108, r=8, t=48, b=8),
+        margin=dict(l=8, r=8, t=48, b=8),
         showlegend=False,
         title_x=0.5,
         title_text=title,
@@ -339,7 +393,7 @@ def _render_bar_chart(df_in: pd.DataFrame, statistic: str, title: str, x_range: 
     if x_range is not None:
         fig.update_xaxes(range=list(x_range))
     fig.update_xaxes(fixedrange=True)
-    fig.update_yaxes(fixedrange=True, automargin=True, tickfont=dict(size=18))
+    fig.update_yaxes(fixedrange=True, automargin=True)
     fig.update_traces(cliponaxis=False)
     _add_team_logos(fig, chart_data)
     st.plotly_chart(fig, width='stretch', config={'displayModeBar': True})
@@ -447,7 +501,7 @@ available_team_ids = (
 )
 available_teams = teams.loc[teams['teamId'].isin(available_team_ids)].copy().sort_values('teamTriCode')
 team_options = available_teams['teamTriCode'].tolist()
-filter_games_col, filter_team_col, filter_download_col = st.columns([1, 1, 0.9], gap='small', vertical_alignment='bottom')
+filter_team_col, filter_minutes_col, filter_download_col = st.columns([1, 1, 0.9], gap='small', vertical_alignment='bottom')
 team_filter_key = 'feg_team_filter'
 valid_selected_teams = [team for team in st.session_state.get(team_filter_key, []) if team in team_options]
 if team_filter_key in st.session_state and st.session_state.get(team_filter_key) != valid_selected_teams:
@@ -475,12 +529,17 @@ player_totals['playerMenuName'] = player_totals['playerMenuName'].fillna(player_
 player_totals['positionGroup'] = player_totals['positionGroup'].fillna('Forwards')
 player_totals = player_totals.loc[player_totals['positionGroup'] == POSITION_GROUP].copy()
 
-games_slider_max = _slider_max(player_totals['gamesPlayed']) if 'gamesPlayed' in player_totals else 0
+minutes_slider_max = _slider_max(player_totals['minutes']) if 'minutes' in player_totals else 0
 
-with filter_games_col:
-    min_games_played = _games_slider(games_slider_max, _slider_default_half_max(player_totals['gamesPlayed']), 'feg_min_games_played')
+with filter_minutes_col:
+    min_minutes_played = _threshold_slider(
+        'Minimum Minutes Played',
+        minutes_slider_max,
+        _minutes_slider_default(player_totals['minutes'], situation_code),
+        'feg_min_minutes_played',
+    )
 
-player_totals = player_totals.loc[player_totals['gamesPlayed'] >= min_games_played].copy()
+player_totals = player_totals.loc[player_totals['minutes'] >= float(min_minutes_played)].copy()
 
 player_totals['iGF'] = _display_series(player_totals, 'iGF', category_code, situation_code)
 player_totals['ixGF'] = _display_series(player_totals, 'ixGF', category_code, situation_code)
@@ -502,15 +561,10 @@ ranked_players = player_totals[['playerMenuName', 'teamId', *STATISTICS]].copy()
 ascending = _stat_ascending(statistic_label)
 ranked_players = ranked_players.sort_values([statistic_label, 'playerMenuName'], ascending=[ascending, True]).reset_index(drop=True)
 
-oxg_bound = 5.0
-if statistic_label == 'oxG%':
-    oxg_values = pd.to_numeric(ranked_players.get('oxG%'), errors='coerce').dropna()
-    if not oxg_values.empty:
-        oxg_bound = max(float((oxg_values - 50.0).abs().max()), 1.0) + 5.0
-oxg_range = (max(0.0, 50.0 - oxg_bound), min(100.0, 50.0 + oxg_bound))
-
 top_5 = ranked_players.head(CHART_COUNT).copy()
 bottom_5 = ranked_players.sort_values([statistic_label, 'playerMenuName'], ascending=[not ascending, True]).head(CHART_COUNT)
+top_chart_range = _midpoint_axis_range(top_5.get('oxG%', pd.Series(dtype=float)), midpoint=50.0, padding=5.0, lower_bound=0.0, upper_bound=100.0)
+bottom_chart_range = _midpoint_axis_range(bottom_5.get('oxG%', pd.Series(dtype=float)), midpoint=50.0, padding=5.0, lower_bound=0.0, upper_bound=100.0)
 
 table = ranked_players.drop(columns=['teamId'], errors='ignore').copy()
 for col in ['iGF', 'ixGF', 'iGFAx', 'oGF', 'oxGF', 'oxGFAx', 'oxGA']:
@@ -523,6 +577,7 @@ with filter_download_col:
         data=table.to_csv(index=False).encode('utf-8'),
         file_name=f'forward_expected_goals_{season_id}_{game_type_id}_{situation_code}_{category_code}.csv',
         mime='text/csv',
+        icon=':material/download:',
         width='stretch',
         disabled=table.empty,
         key='feg_download_full_list',
@@ -534,7 +589,7 @@ else:
     chart_left, chart_right = st.columns(2, gap='small')
     with chart_left:
         with st.container(border=True):
-            _render_bar_chart(top_5, statistic_label, f'Top {CHART_COUNT} by {statistic_label}', x_range=oxg_range if statistic_label == 'oxG%' else None)
+            _render_bar_chart(top_5, statistic_label, f'Top {CHART_COUNT} by {statistic_label}', x_range=top_chart_range if statistic_label == 'oxG%' else None)
     with chart_right:
         with st.container(border=True):
-            _render_bar_chart(bottom_5, statistic_label, f'Bottom {CHART_COUNT} by {statistic_label}', x_range=oxg_range if statistic_label == 'oxG%' else None)
+            _render_bar_chart(bottom_5, statistic_label, f'Bottom {CHART_COUNT} by {statistic_label}', x_range=bottom_chart_range if statistic_label == 'oxG%' else None)
