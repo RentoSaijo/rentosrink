@@ -23,7 +23,7 @@ NHLSCRAPER_LOGO_PATH = 'assets/nhlscraper.png'
 LETTER_LOGO_PATH = 'assets/letter_raw.png'
 
 TITLE_BOX = (_s(0), _s(16), CARD_WIDTH, _s(64))
-SUBTITLE_BOX = (_s(0), _s(80), CARD_WIDTH, _s(32))
+SUBTITLE_BOX = (_s(0), _s(84), CARD_WIDTH, _s(32))
 FOOTER_BOX = (_s(160), _s(794), _s(1280), _s(80))
 
 LEFT_LOGO_X = _s(24)
@@ -316,8 +316,9 @@ def _fit_footer_fonts(draw: ImageDraw.ImageDraw, lines, box_width: int, box_heig
             for text, is_bold in line:
                 font = bold_font if is_bold else regular_font
                 seg_width, seg_height = _text_size(draw, text, font)
+                ascent, descent = font.getmetrics()
                 width += seg_width
-                height = max(height, seg_height)
+                height = max(height, ascent + descent, seg_height)
             line_widths.append(width)
             line_heights.append(height)
         total_height = sum(line_heights) + (spacing * (len(lines) - 1))
@@ -339,7 +340,8 @@ def _draw_footer(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], date
         for text, is_bold in line:
             font = bold_font if is_bold else regular_font
             _, seg_height = _text_size(draw, text, font)
-            max_height = max(max_height, seg_height)
+            ascent, descent = font.getmetrics()
+            max_height = max(max_height, ascent + descent, seg_height)
         line_heights.append(max_height)
 
     total_height = sum(line_heights) + (spacing * (len(lines) - 1))

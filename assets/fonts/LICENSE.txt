@@ -1,0 +1,17 @@
+Bundled Fonts
+=============
+
+This directory contains the following font files used by the ranking card exporter:
+
+- NotoSans-Regular.ttf
+- NotoSans-Bold.ttf
+
+Font family: Noto Sans
+Source: Google / Noto Fonts
+Project page: https://github.com/notofonts/noto-fonts
+License: SIL Open Font License, Version 1.1
+License URL: https://openfontlicense.org
+
+These files are bundled in the repository so image exports render deterministically
+across local development machines, Streamlit Community Cloud, and other deployment
+environments that may not share the same system fonts.
