@@ -99,9 +99,9 @@ FOOTER_LINES = (
         ('@RentoSaijo', True),
         (' inspired by ', False),
         ('@EvolvingHockey', True),
-        ('; ', False),
+        ('; from ', False),
         ('{date_start}', True),
-        ('-', False),
+        (' to ', False),
         ('{date_end}', True),
         ('.', False),
     ),
@@ -447,6 +447,7 @@ def build_ranking_card_png(
     lower_is_better: bool,
     range_start_date,
     range_end_date,
+    title_statistic_label: str | None = None,
 ) -> bytes:
     if statistic not in ranked_df.columns:
         raise ValueError(f'Missing statistic column: {statistic}')
@@ -458,7 +459,7 @@ def build_ranking_card_png(
     canvas = Image.new('RGBA', (CARD_WIDTH, CARD_HEIGHT), CARD_BG)
     draw = ImageDraw.Draw(canvas)
 
-    title = f'Top & Bottom 12 {position_label} by {statistic}'
+    title = f'Top & Bottom 12 {position_label} by {title_statistic_label or statistic}'
     teams_label = _sanitize_teams_label(selected_teams)
     subtitle = SUBTITLE_SEPARATOR.join((season_label, game_type_label, situation_label, teams_label, minimum_filter_label))
 

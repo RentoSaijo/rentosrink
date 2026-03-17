@@ -430,9 +430,7 @@ game_scope = season_games.loc[season_games['gameTypeId'] == game_type_id].copy()
 
 date_min = game_scope['gameDate'].min()
 date_max = game_scope['gameDate'].max()
-date_range_key = 'feg_date_range_saved'
-date_range_widget_key = 'feg_date_range_widget'
-date_context_key = 'feg_date_range_context'
+date_range_widget_key = f'feg_date_range_widget_{season_id}_{game_type_id}'
 
 with c_date:
     if game_scope.empty or pd.isna(date_min) or pd.isna(date_max):
@@ -442,24 +440,14 @@ with c_date:
     else:
         min_date = date_min.date()
         max_date = date_max.date()
-        current_context = (season_id, game_type_id)
-        if st.session_state.get(date_context_key) != current_context:
-            st.session_state[date_range_key] = (min_date, max_date)
-            st.session_state[date_context_key] = current_context
-            if date_range_widget_key in st.session_state:
-                del st.session_state[date_range_widget_key]
-        else:
-            st.session_state[date_range_key] = _clamp_date_range(st.session_state.get(date_range_key), min_date, max_date)
-
         selected_dates = st.date_input(
             'Date Range',
-            value=st.session_state.get(date_range_key, (min_date, max_date)),
+            value=(min_date, max_date),
             min_value=min_date,
             max_value=max_date,
             key=date_range_widget_key,
         )
-        st.session_state[date_range_key] = _clamp_date_range(selected_dates, min_date, max_date)
-        selected_start_date, selected_end_date = _date_tuple(selected_dates)
+        selected_start_date, selected_end_date = _clamp_date_range(selected_dates, min_date, max_date)
 
 with c_sit:
     situation_label = st.selectbox('Situation', list(SITUATIONS.keys()), index=0, key='feg_situation_label')
@@ -590,6 +578,7 @@ if not ranked_players.empty:
             lower_is_better=ascending,
             range_start_date=selected_start_date,
             range_end_date=selected_end_date,
+            title_statistic_label=(f'{statistic_label} per 60' if category_code == 'p60' else statistic_label),
         )
     except Exception as exc:
         card_error = str(exc)

@@ -9,3 +9,9 @@ data/sbss/goalies_*.csv filter=lfs diff=lfs merge=lfs -text
 *.rds filter=lfs diff=lfs merge=lfs -text
 models/**/*.csv filter=lfs diff=lfs merge=lfs -text
 data/sbss/*.csv filter=lfs diff=lfs merge=lfs -text
+models/**/*.rds -filter -diff -merge text
+models/**/*.csv -filter -diff -merge text
+models/**/*.parquet -filter -diff -merge text
+scripts/**/*.rds -filter -diff -merge text
+scripts/**/*.csv -filter -diff -merge text
+scripts/**/*.parquet -filter -diff -merge text

@@ -11,3 +11,9 @@ __pycache__/
 *.parquet
 models/xG/data/
 models/contracts/legacy/
+models/**/*.rds
+models/**/*.csv
+models/**/*.parquet
+scripts/**/*.rds
+scripts/**/*.csv
+scripts/**/*.parquet
