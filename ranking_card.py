@@ -232,6 +232,8 @@ def _sanitize_teams_label(selected_teams: list[str] | tuple[str, ...] | None) ->
 
 def _format_compact_name(name: str) -> str:
     parts = [part for part in str(name).strip().split() if part]
+    while parts and parts[-1].isdigit():
+        parts.pop()
     if not parts:
         return ''
     if len(parts) == 1:
@@ -367,9 +369,14 @@ def _draw_footer(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], date
 
 
 def _sorted_rankings(df_in: pd.DataFrame, statistic: str, lower_is_better: bool) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    source = df_in[['playerMenuName', 'teamId', statistic]].copy()
+    name_cols = ['playerMenuName', 'teamId', statistic]
+    if 'playerFullName' in df_in.columns:
+        name_cols.insert(1, 'playerFullName')
+    source = df_in[name_cols].copy()
     source[statistic] = pd.to_numeric(source[statistic], errors='coerce')
     source['playerMenuName'] = source['playerMenuName'].fillna('').astype(str).str.strip()
+    if 'playerFullName' in source.columns:
+        source['playerFullName'] = source['playerFullName'].fillna('').astype(str).str.strip()
     source = source.dropna(subset=[statistic]).copy()
     source = source.loc[source['playerMenuName'] != ''].copy()
     top = source.sort_values([statistic, 'playerMenuName'], ascending=[lower_is_better, True]).head(ROW_COUNT).reset_index(drop=True)
@@ -400,7 +407,8 @@ def _draw_player_rows(
         if pd.notna(team_id):
             _paste_contained_image(canvas, TEAM_LOGO_TEMPLATE.format(team_id=int(team_id)), logo_x, row_y, _s(51), _s(51))
 
-        compact_name = _format_compact_name(row.get('playerMenuName', ''))
+        full_name = row.get('playerFullName', '') if 'playerFullName' in rows.columns else ''
+        compact_name = _format_compact_name(full_name or row.get('playerMenuName', ''))
         display_name = _truncate_text(draw, compact_name, row_font, NAME_BOX_WIDTH)
         name_left, name_top, _, _ = _text_bounds(draw, display_name, row_font)
         name_y = row_y + _s(4) + int((ROW_TEXT_HEIGHT - _text_size(draw, display_name, row_font)[1]) / 2) - name_top

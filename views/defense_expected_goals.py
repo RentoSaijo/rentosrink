@@ -484,10 +484,11 @@ else:
 filtered_games = season_player_games.loc[season_player_games['gameId'].isin(selected_game_ids)].copy()
 player_totals = _aggregate_players(filtered_games)
 player_totals = player_totals.merge(
-    bio[['playerId', 'playerMenuName', 'positionGroup']],
+    bio[['playerId', 'playerFullName', 'playerMenuName', 'positionGroup']],
     on='playerId',
     how='left',
 )
+player_totals['playerFullName'] = player_totals['playerFullName'].fillna(player_totals['playerMenuName'])
 player_totals['playerMenuName'] = player_totals['playerMenuName'].fillna(player_totals['playerId'].astype(str))
 player_totals['positionGroup'] = player_totals['positionGroup'].fillna('Forwards')
 player_totals = player_totals.loc[player_totals['positionGroup'] == POSITION_GROUP].copy()
@@ -522,10 +523,11 @@ player_totals['gamesPlayed'] = pd.to_numeric(player_totals['gamesPlayed'], error
 player_totals['minutes'] = _minutes_series(player_totals, situation_code)
 
 player_totals = player_totals.merge(
-    bio[['playerId', 'playerMenuName', 'positionGroup']],
+    bio[['playerId', 'playerFullName', 'playerMenuName', 'positionGroup']],
     on='playerId',
     how='left',
 )
+player_totals['playerFullName'] = player_totals['playerFullName'].fillna(player_totals['playerMenuName'])
 player_totals['playerMenuName'] = player_totals['playerMenuName'].fillna(player_totals['playerId'].astype(str))
 player_totals['positionGroup'] = player_totals['positionGroup'].fillna('Forwards')
 player_totals = player_totals.loc[player_totals['positionGroup'] == POSITION_GROUP].copy()
@@ -558,7 +560,7 @@ player_totals['oxG%'] = (
 )
 
 display_cols = ['playerMenuName', *STATISTICS]
-ranked_players = player_totals[['playerMenuName', 'teamId', *STATISTICS]].copy()
+ranked_players = player_totals[['playerFullName', 'playerMenuName', 'teamId', *STATISTICS]].copy()
 ascending = _stat_ascending(statistic_label)
 ranked_players = ranked_players.sort_values([statistic_label, 'playerMenuName'], ascending=[ascending, True]).reset_index(drop=True)
 

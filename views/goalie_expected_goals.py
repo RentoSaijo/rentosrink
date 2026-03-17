@@ -87,9 +87,10 @@ def _prepare_biographies(df_in: pd.DataFrame) -> pd.DataFrame:
     bio['playerId'] = pd.to_numeric(bio.get('playerId'), errors='coerce')
     bio = bio.dropna(subset=['playerId']).copy()
     bio['playerId'] = bio['playerId'].astype('int64')
+    bio['playerFullName'] = bio.get('playerFullName', '').astype(str).str.strip()
     bio['playerMenuName'] = bio.get('playerMenuName', bio.get('playerFullName', '')).astype(str).str.strip()
     bio['positionCode'] = bio.get('positionCode', '').astype(str).str.strip().str.upper()
-    return bio.loc[bio['positionCode'] == 'G', ['playerId', 'playerMenuName']].copy()
+    return bio.loc[bio['positionCode'] == 'G', ['playerId', 'playerFullName', 'playerMenuName']].copy()
 
 
 def _prepare_basic(df_in: pd.DataFrame) -> pd.DataFrame:
@@ -482,6 +483,7 @@ goalie_totals['shotsAgainst'] = _sum_metric(goalie_totals, 'sA', situation_code)
 goalie_totals = goalie_totals.loc[goalie_totals['shotsAgainst'] > 0].copy()
 
 goalie_totals = goalie_totals.merge(bio, on='playerId', how='left')
+goalie_totals['playerFullName'] = goalie_totals['playerFullName'].fillna(goalie_totals['playerMenuName'])
 goalie_totals['playerMenuName'] = goalie_totals['playerMenuName'].fillna(goalie_totals['playerId'].astype(str))
 
 games_slider_max = _slider_max(goalie_totals['gamesPlayed']) if 'gamesPlayed' in goalie_totals else 0
@@ -500,7 +502,7 @@ goalie_totals['GA'] = _sum_metric(goalie_totals, 'gA', situation_code)
 goalie_totals['xGA'] = _sum_metric(goalie_totals, 'xGA', situation_code)
 goalie_totals['GSAx'] = goalie_totals['xGA'] - goalie_totals['GA']
 
-ranked_goalies = goalie_totals[['playerMenuName', 'teamId', *STATISTICS]].copy()
+ranked_goalies = goalie_totals[['playerFullName', 'playerMenuName', 'teamId', *STATISTICS]].copy()
 ascending = _stat_ascending(statistic_label)
 ranked_goalies = ranked_goalies.sort_values([statistic_label, 'playerMenuName'], ascending=[ascending, True]).reset_index(drop=True)
 
