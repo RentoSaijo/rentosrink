@@ -7,6 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from ranking_card import build_ranking_card_png
 from utils import file_data_url, load_biographies, load_games, load_gbgs_skater_advanced, load_gbgs_skater_basic, load_teams
 
 
@@ -501,7 +502,7 @@ available_team_ids = (
 )
 available_teams = teams.loc[teams['teamId'].isin(available_team_ids)].copy().sort_values('teamTriCode')
 team_options = available_teams['teamTriCode'].tolist()
-filter_team_col, filter_minutes_col, filter_download_col = st.columns([1, 1, 0.9], gap='small', vertical_alignment='bottom')
+filter_team_col, filter_minutes_col, filter_download_col, filter_card_col = st.columns([1, 1, 0.9, 0.9], gap='small', vertical_alignment='bottom')
 team_filter_key = 'deg_team_filter'
 valid_selected_teams = [team for team in st.session_state.get(team_filter_key, []) if team in team_options]
 if team_filter_key in st.session_state and st.session_state.get(team_filter_key) != valid_selected_teams:
@@ -571,6 +572,26 @@ for col in ['iGF', 'ixGF', 'iGFAx', 'oGF', 'oxGF', 'oxGFAx', 'oxGA']:
     table[col] = table[col].map(lambda value: _fmt_value(value, category_code))
 table['oxG%'] = table['oxG%'].map(lambda value: round(float(value), 1) if pd.notna(value) else 0.0)
 
+card_png_bytes = None
+card_error = None
+if not ranked_players.empty:
+    try:
+        card_png_bytes = build_ranking_card_png(
+            ranked_df=ranked_players,
+            statistic=statistic_label,
+            position_label='Defensemen',
+            season_label=season_label,
+            game_type_label=game_type_label,
+            situation_label=situation_label,
+            selected_teams=selected_teams,
+            minimum_filter_label=f'{int(min_minutes_played)} Min. Minutes Played',
+            lower_is_better=ascending,
+            range_start_date=selected_start_date,
+            range_end_date=selected_end_date,
+        )
+    except Exception as exc:
+        card_error = str(exc)
+
 with filter_download_col:
     st.download_button(
         'Download Full List',
@@ -582,6 +603,19 @@ with filter_download_col:
         disabled=table.empty,
         key='deg_download_full_list',
     )
+with filter_card_col:
+    st.download_button(
+        'Download Card',
+        data=card_png_bytes or b'',
+        file_name=f'defense_expected_goals_card_{season_id}_{game_type_id}_{situation_code}_{category_code}_{statistic_label.lower().replace("%", "pct")}.png',
+        mime='image/png',
+        icon=':material/download:',
+        width='stretch',
+        disabled=card_png_bytes is None,
+        key='deg_download_card',
+    )
+    if card_error:
+        st.caption(f'Card export unavailable: {card_error}')
 
 if table.empty:
     st.info('No defensemen available for this selection.')

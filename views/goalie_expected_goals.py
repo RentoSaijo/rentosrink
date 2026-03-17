@@ -7,6 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from ranking_card import build_ranking_card_png
 from utils import (
     file_data_url,
     load_biographies,
@@ -460,7 +461,7 @@ available_team_ids = (
 )
 available_teams = teams.loc[teams['teamId'].isin(available_team_ids)].copy().sort_values('teamTriCode')
 team_options = available_teams['teamTriCode'].tolist()
-filter_team_col, filter_games_col, filter_download_col = st.columns([1, 1, 0.9], gap='small', vertical_alignment='bottom')
+filter_team_col, filter_games_col, filter_download_col, filter_card_col = st.columns([1, 1, 0.9, 0.9], gap='small', vertical_alignment='bottom')
 team_filter_key = 'geg_team_filter'
 valid_selected_teams = [team for team in st.session_state.get(team_filter_key, []) if team in team_options]
 if team_filter_key in st.session_state and st.session_state.get(team_filter_key) != valid_selected_teams:
@@ -512,6 +513,26 @@ table = ranked_goalies.drop(columns=['teamId'], errors='ignore').copy()
 for statistic in STATISTICS:
     table[statistic] = table[statistic].map(lambda value, stat=statistic: _fmt_value(value, stat))
 
+card_png_bytes = None
+card_error = None
+if not ranked_goalies.empty:
+    try:
+        card_png_bytes = build_ranking_card_png(
+            ranked_df=ranked_goalies,
+            statistic=statistic_label,
+            position_label='Goalies',
+            season_label=season_label,
+            game_type_label=game_type_label,
+            situation_label=situation_label,
+            selected_teams=selected_teams,
+            minimum_filter_label=f'{int(min_games_played)} Min. Games Played',
+            lower_is_better=ascending,
+            range_start_date=selected_start_date,
+            range_end_date=selected_end_date,
+        )
+    except Exception as exc:
+        card_error = str(exc)
+
 with filter_download_col:
     st.download_button(
         'Download Full List',
@@ -523,6 +544,19 @@ with filter_download_col:
         disabled=table.empty,
         key='geg_download_full_list',
     )
+with filter_card_col:
+    st.download_button(
+        'Download Card',
+        data=card_png_bytes or b'',
+        file_name=f'goalie_expected_goals_card_{season_id}_{game_type_id}_{situation_code}_{statistic_label.lower().replace("%", "pct")}.png',
+        mime='image/png',
+        icon=':material/download:',
+        width='stretch',
+        disabled=card_png_bytes is None,
+        key='geg_download_card',
+    )
+    if card_error:
+        st.caption(f'Card export unavailable: {card_error}')
 
 if table.empty:
     st.info('No goalies available for this selection.')

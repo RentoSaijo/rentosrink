@@ -8,7 +8,7 @@ from utils import file_data_url
 st.set_page_config(layout = 'wide')
 
 # Logo
-st.logo(image = file_data_url('assets/Letter.png'), size = 'large')
+st.logo(image = file_data_url('assets/letter_raw.png'), size = 'large')
 st.markdown(
     '''
     <style>
