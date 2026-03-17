@@ -5,6 +5,7 @@ import pandas as pd
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SCALE = 2
 
 
@@ -46,12 +47,14 @@ BAR_HEIGHT = _s(44)
 BAR_RADIUS = _s(8)
 
 FONT_NAMES_REGULAR = (
+    'assets/fonts/NotoSans-Regular.ttf',
     'Helvetica.ttc',
     'Arial.ttf',
     'DejaVuSans.ttf',
     'LiberationSans-Regular.ttf',
 )
 FONT_NAMES_BOLD = (
+    'assets/fonts/NotoSans-Bold.ttf',
     'Arial Bold.ttf',
     'Helvetica.ttc',
     'DejaVuSans-Bold.ttf',
@@ -109,9 +112,13 @@ def _get_font(size: int, bold: bool = False):
     font_names = FONT_NAMES_BOLD if bold else FONT_NAMES_REGULAR
     for name in font_names:
         try:
-            return ImageFont.truetype(name, size=max(1, int(size)))
+            font_path = name if os.path.isabs(name) else os.path.join(BASE_DIR, name)
+            return ImageFont.truetype(font_path, size=max(1, int(size)))
         except OSError:
-            continue
+            try:
+                return ImageFont.truetype(name, size=max(1, int(size)))
+            except OSError:
+                continue
     return ImageFont.load_default()
 
 
