@@ -1033,37 +1033,9 @@ build_goalie_sbss <- function(scored_attempts) {
     dplyr::arrange(goaliePlayerId, gameId, eventId)
 }
 
-remove_stale_split_files <- function(split_dir, season_id) {
-  pattern <- paste0("_", season_id, "\\.csv$")
-  stale_files <- list.files(split_dir, pattern = pattern, full.names = TRUE)
-
-  if (length(stale_files) > 0L) {
-    invisible(file.remove(stale_files))
-  }
-}
-
-write_split_entity_files <- function(data, id_col, season_id, aggregate_path, split_dir) {
+write_aggregate_entity_file <- function(data, aggregate_path) {
   dir.create(dirname(aggregate_path), recursive = TRUE, showWarnings = FALSE)
-  dir.create(split_dir, recursive = TRUE, showWarnings = FALSE)
-
-  remove_stale_split_files(split_dir, season_id)
   readr::write_csv(data, aggregate_path)
-
-  if (nrow(data) == 0L) {
-    return(invisible(NULL))
-  }
-
-  entity_ids <- sort(unique(data[[id_col]]))
-
-  for (entity_id in entity_ids) {
-    entity_path <- file.path(split_dir, paste0(entity_id, "_", season_id, ".csv"))
-    readr::write_csv(
-      data %>%
-        dplyr::filter(.data[[id_col]] == entity_id) %>%
-        dplyr::select(-dplyr::all_of(id_col)),
-      entity_path
-    )
-  }
 
   invisible(NULL)
 }

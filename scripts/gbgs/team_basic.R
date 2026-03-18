@@ -3,7 +3,7 @@
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(nhlscraper))
 
-season_env <- Sys.getenv("SEASON", unset = "20242025")
+season_env <- Sys.getenv("SEASON", unset = "20252026")
 SEASON <- as.integer(season_env)
 
 # ----- Helpers ----- #

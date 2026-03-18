@@ -9,15 +9,8 @@ cat("Building scored shot attempts for goalies...\n")
 goalies <- rebuild_goalie_sbss_from_existing(SEASON)
 
 aggregate_path <- file.path("data", "sbss", paste0("goalies_", SEASON, ".csv"))
-split_dir <- file.path("data", "sbss", "goalie")
 
-write_split_entity_files(
-  data = goalies,
-  id_col = "goaliePlayerId",
-  season_id = SEASON,
-  aggregate_path = aggregate_path,
-  split_dir = split_dir
-)
+write_aggregate_entity_file(data = goalies, aggregate_path = aggregate_path)
 
 cat("Wrote season file:", aggregate_path, "\n")
 cat(
