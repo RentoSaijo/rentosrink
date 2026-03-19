@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-105 -60 210 120" width="1400" height="900">
+<defs>
+<clipPath id="rink-clip">
+<rect x="-100" y="-43" width="200" height="86" rx="28" ry="28" />
+</clipPath>
+<style>
+text { font-family: Menlo, Consolas, monospace; fill: #111111; text-anchor: middle; }
+.small { font-size: 3.3px; }
+.title { font-size: 5px; font-weight: 600; }
+.legend { text-anchor: start; dominant-baseline: middle; }
+</style>
+</defs>
+<rect x="-105" y="-60" width="210" height="120" fill="#ffffff" />
+<text x="0" y="-54" class="title">Goal Sequence Animation: gameId 2023020004, goal eventId 34</text>
+<g transform="scale(1,-1)">
+<rect x="-100" y="-43" width="200" height="86" rx="28" ry="28" fill="#f9fcff" />
+<g clip-path="url(#rink-clip)">
+<line x1="0" y1="-43" x2="0" y2="43" stroke="#c92a2a" stroke-width="1" />
+<line x1="25" y1="-43" x2="25" y2="43" stroke="#1c7ed6" stroke-width="1" />
+<line x1="-25" y1="-43" x2="-25" y2="43" stroke="#1c7ed6" stroke-width="1" />
+<line x1="89" y1="-43" x2="89" y2="43" stroke="#c92a2a" stroke-width="1" />
+<line x1="-89" y1="-43" x2="-89" y2="43" stroke="#c92a2a" stroke-width="1" />
+<circle cx="0" cy="0" r="15" fill="none" stroke="#1c7ed6" stroke-width="0.8" />
+<circle cx="69" cy="22" r="15" fill="none" stroke="#c92a2a" stroke-width="0.8" />
+<circle cx="69" cy="-22" r="15" fill="none" stroke="#c92a2a" stroke-width="0.8" />
+<circle cx="-69" cy="22" r="15" fill="none" stroke="#c92a2a" stroke-width="0.8" />
+<circle cx="-69" cy="-22" r="15" fill="none" stroke="#c92a2a" stroke-width="0.8" />
+<path d="M 89.00 -6.00 A 6.00 6.00 0 0 1 89.00 6.00" fill="none" stroke="#1c7ed6" stroke-width="0.8" />
+<path d="M -89.00 6.00 A 6.00 6.00 0 0 1 -89.00 -6.00" fill="none" stroke="#1c7ed6" stroke-width="0.8" />
+<line x1="67.45" y1="-37.33" x2="31.62" y2="-14.28" stroke="#1f77b4" stroke-width="1.45" stroke-linecap="butt" stroke-dasharray="42.61" stroke-dashoffset="42.61" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.35s" dur="0.01s" fill="freeze" /><animate attributeName="stroke-dashoffset" from="42.61" to="0" begin="0.35s" dur="0.55s" fill="freeze" /></line><polygon points="28.69,-12.40 30.56,-15.93 32.67,-12.63" fill="#1f77b4" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.88s" dur="0.05s" fill="freeze" /></polygon>
+<line x1="26.93" y1="-10.18" x2="46.82" y2="-32.44" stroke="#1f77b4" stroke-width="1.45" stroke-linecap="butt" stroke-dasharray="29.84" stroke-dashoffset="29.84" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="1.05s" dur="0.01s" fill="freeze" /><animate attributeName="stroke-dashoffset" from="29.84" to="0" begin="1.05s" dur="0.55s" fill="freeze" /></line><polygon points="49.13,-35.04 48.28,-31.14 45.36,-33.75" fill="#1f77b4" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="1.58s" dur="0.05s" fill="freeze" /></polygon>
+<line x1="54.38" y1="-30.93" x2="81.10" y2="-16.39" stroke="#1f77b4" stroke-width="1.45" stroke-linecap="butt" stroke-dasharray="30.42" stroke-dashoffset="30.42" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="1.75s" dur="0.01s" fill="freeze" /><animate attributeName="stroke-dashoffset" from="30.42" to="0" begin="1.75s" dur="0.55s" fill="freeze" /></line><polygon points="84.16,-14.73 80.17,-14.68 82.04,-18.11" fill="#1f77b4" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="2.28s" dur="0.05s" fill="freeze" /></polygon>
+<circle cx="84.00" cy="5.00" r="1.8" fill="#d62728" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="3.00s" dur="0.05s" fill="freeze" /><animate attributeName="r" values="1.8;3.8;1.8" begin="3.05s" dur="0.9s" repeatCount="indefinite" /></circle>
+</g>
+<rect x="-100" y="-43" width="200" height="86" rx="28" ry="28" fill="none" stroke="#111111" stroke-width="1.1" />
+</g>
+<g transform="translate(44, 47)">
+<rect x="0" y="0" width="4" height="2" fill="#1f77b4" />
+<text x="6" y="1" class="small legend">Shooting Team Passes</text>
+<rect x="0" y="4" width="4" height="2" fill="#2b8a3e" />
+<text x="6" y="5" class="small legend">Defending Team Passes</text>
+<rect x="0" y="8" width="4" height="2" fill="#d62728" />
+<text x="6" y="9" class="small legend">Goal Shot</text>
+</g>
+</svg>

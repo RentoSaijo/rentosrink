@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-105 -60 210 120" width="1400" height="900">
+<defs>
+<clipPath id="rink-clip">
+<rect x="-100" y="-43" width="200" height="86" rx="28" ry="28" />
+</clipPath>
+<style>
+text { font-family: Menlo, Consolas, monospace; fill: #111111; text-anchor: middle; }
+.small { font-size: 3.3px; }
+.title { font-size: 5px; font-weight: 600; }
+.legend { text-anchor: start; dominant-baseline: middle; }
+</style>
+</defs>
+<rect x="-105" y="-60" width="210" height="120" fill="#ffffff" />
+<text x="0" y="-54" class="title">Goal Sequence Animation: gameId 2023020378, goal eventId 623</text>
+<g transform="scale(1,-1)">
+<rect x="-100" y="-43" width="200" height="86" rx="28" ry="28" fill="#f9fcff" />
+<g clip-path="url(#rink-clip)">
+<line x1="0" y1="-43" x2="0" y2="43" stroke="#c92a2a" stroke-width="1" />
+<line x1="25" y1="-43" x2="25" y2="43" stroke="#1c7ed6" stroke-width="1" />
+<line x1="-25" y1="-43" x2="-25" y2="43" stroke="#1c7ed6" stroke-width="1" />
+<line x1="89" y1="-43" x2="89" y2="43" stroke="#c92a2a" stroke-width="1" />
+<line x1="-89" y1="-43" x2="-89" y2="43" stroke="#c92a2a" stroke-width="1" />
+<circle cx="0" cy="0" r="15" fill="none" stroke="#1c7ed6" stroke-width="0.8" />
+<circle cx="69" cy="22" r="15" fill="none" stroke="#c92a2a" stroke-width="0.8" />
+<circle cx="69" cy="-22" r="15" fill="none" stroke="#c92a2a" stroke-width="0.8" />
+<circle cx="-69" cy="22" r="15" fill="none" stroke="#c92a2a" stroke-width="0.8" />
+<circle cx="-69" cy="-22" r="15" fill="none" stroke="#c92a2a" stroke-width="0.8" />
+<path d="M 89.00 -6.00 A 6.00 6.00 0 0 1 89.00 6.00" fill="none" stroke="#1c7ed6" stroke-width="0.8" />
+<path d="M -89.00 6.00 A 6.00 6.00 0 0 1 -89.00 -6.00" fill="none" stroke="#1c7ed6" stroke-width="0.8" />
+<line x1="13.80" y1="10.83" x2="21.32" y2="11.14" stroke="#1f77b4" stroke-width="1.45" stroke-linecap="butt" stroke-dasharray="7.52" stroke-dashoffset="7.52" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.35s" dur="0.01s" fill="freeze" /><animate attributeName="stroke-dashoffset" from="7.52" to="0" begin="0.35s" dur="0.55s" fill="freeze" /></line><polygon points="24.79,11.28 21.24,13.09 21.40,9.18" fill="#1f77b4" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="0.88s" dur="0.05s" fill="freeze" /></polygon>
+<line x1="22.30" y1="4.98" x2="29.37" y2="0.54" stroke="#1f77b4" stroke-width="1.45" stroke-linecap="butt" stroke-dasharray="8.35" stroke-dashoffset="8.35" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="1.05s" dur="0.01s" fill="freeze" /><animate attributeName="stroke-dashoffset" from="8.35" to="0" begin="1.05s" dur="0.55s" fill="freeze" /></line><polygon points="32.32,-1.31 30.41,2.20 28.33,-1.12" fill="#1f77b4" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="1.58s" dur="0.05s" fill="freeze" /></polygon>
+<line x1="10.14" y1="2.46" x2="-4.88" y2="6.06" stroke="#1f77b4" stroke-width="1.45" stroke-linecap="butt" stroke-dasharray="15.45" stroke-dashoffset="15.45" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="1.75s" dur="0.01s" fill="freeze" /><animate attributeName="stroke-dashoffset" from="15.45" to="0" begin="1.75s" dur="0.55s" fill="freeze" /></line><polygon points="-8.27,6.87 -5.34,4.15 -4.43,7.96" fill="#1f77b4" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="2.28s" dur="0.05s" fill="freeze" /></polygon>
+<line x1="-30.64" y1="4.24" x2="-48.95" y2="-2.67" stroke="#1f77b4" stroke-width="1.45" stroke-linecap="butt" stroke-dasharray="19.56" stroke-dashoffset="19.56" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="2.45s" dur="0.01s" fill="freeze" /><animate attributeName="stroke-dashoffset" from="19.56" to="0" begin="2.45s" dur="0.55s" fill="freeze" /></line><polygon points="-52.20,-3.90 -48.26,-4.50 -49.64,-0.84" fill="#1f77b4" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="2.98s" dur="0.05s" fill="freeze" /></polygon>
+<line x1="-55.08" y1="-2.45" x2="-62.02" y2="2.85" stroke="#1f77b4" stroke-width="1.45" stroke-linecap="butt" stroke-dasharray="8.73" stroke-dashoffset="8.73" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="3.15s" dur="0.01s" fill="freeze" /><animate attributeName="stroke-dashoffset" from="8.73" to="0" begin="3.15s" dur="0.55s" fill="freeze" /></line><polygon points="-64.78,4.96 -63.21,1.29 -60.83,4.40" fill="#1f77b4" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="3.68s" dur="0.05s" fill="freeze" /></polygon>
+<line x1="-67.31" y1="5.36" x2="-70.14" y2="-0.98" stroke="#1f77b4" stroke-width="1.45" stroke-linecap="butt" stroke-dasharray="6.94" stroke-dashoffset="6.94" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="3.85s" dur="0.01s" fill="freeze" /><animate attributeName="stroke-dashoffset" from="6.94" to="0" begin="3.85s" dur="0.55s" fill="freeze" /></line><polygon points="-71.56,-4.16 -68.35,-1.78 -71.93,-0.18" fill="#1f77b4" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="4.38s" dur="0.05s" fill="freeze" /></polygon>
+<line x1="-73.22" y1="-6.17" x2="-79.99" y2="2.08" stroke="#1f77b4" stroke-width="1.45" stroke-linecap="butt" stroke-dasharray="10.67" stroke-dashoffset="10.67" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="4.55s" dur="0.01s" fill="freeze" /><animate attributeName="stroke-dashoffset" from="10.67" to="0" begin="4.55s" dur="0.55s" fill="freeze" /></line><polygon points="-82.20,4.77 -81.51,0.84 -78.48,3.32" fill="#1f77b4" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="5.08s" dur="0.05s" fill="freeze" /></polygon>
+<circle cx="-83.00" cy="5.00" r="1.8" fill="#d62728" opacity="0"><animate attributeName="opacity" from="0" to="1" begin="5.80s" dur="0.05s" fill="freeze" /><animate attributeName="r" values="1.8;3.8;1.8" begin="5.85s" dur="0.9s" repeatCount="indefinite" /></circle>
+</g>
+<rect x="-100" y="-43" width="200" height="86" rx="28" ry="28" fill="none" stroke="#111111" stroke-width="1.1" />
+</g>
+<g transform="translate(44, 47)">
+<rect x="0" y="0" width="4" height="2" fill="#1f77b4" />
+<text x="6" y="1" class="small legend">Shooting Team Passes</text>
+<rect x="0" y="4" width="4" height="2" fill="#2b8a3e" />
+<text x="6" y="5" class="small legend">Defending Team Passes</text>
+<rect x="0" y="8" width="4" height="2" fill="#d62728" />
+<text x="6" y="9" class="small legend">Goal Shot</text>
+</g>
+</svg>
