@@ -1,2 +1,2 @@
 source(file.path("models", "xG", "legacy", "train.R"))
-run_legacy_ridge_training("so", 2)
+run_legacy_ridge_training("ps", 2)

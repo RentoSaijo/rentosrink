@@ -2,9 +2,13 @@
 
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(nhlscraper))
+source(file.path("scripts", "gbgs", "shared_advanced.R"))
 
 season_env <- Sys.getenv("SEASON", unset = "20252026")
 SEASON <- as.integer(season_env)
+season_path <- file.path("data", "gbgs", "basic", paste0("goalies_", SEASON, ".csv"))
+existing <- load_existing_gbg_file(season_path)
+existing_game_ids <- extract_existing_game_ids(existing)
 
 # ----- Helpers ----- #
 
@@ -37,7 +41,7 @@ derive_strength_state <- function(strength_state, situation_code, game_type_id, 
   sc <- normalize_situation_code(situation_code)
   is_shootout <- !is.na(game_type_id) & !is.na(period_number) & game_type_id == 2L & period_number == 5L
   is_penalty_shot <- !is.na(sc) & sc %in% c("0101", "1010") & !is_shootout
-  out[is.na(out)] <- "ev"
+  out[is.na(sc)] <- "ev"
   out[is_penalty_shot] <- "ev"
   out
 }
@@ -224,7 +228,6 @@ goalie_in_net_id <- if ("goalieInNetId" %in% names(pbp)) {
 } else {
   rep(NA_integer_, nrow(pbp))
 }
-pbp$goalieInNetIdCompat <- goalie_in_net_id
 
 period_number <- if ("periodNumber" %in% names(pbp)) {
   suppressWarnings(as.integer(pbp$periodNumber))
@@ -235,7 +238,10 @@ period_number <- if ("periodNumber" %in% names(pbp)) {
 }
 
 pbp <- pbp %>%
-  dplyr::mutate(period = period_number) %>%
+  dplyr::mutate(
+    period = period_number,
+    goalieInNetIdFallback = goalie_in_net_id
+  ) %>%
   dplyr::filter(
     gameTypeId %in% c(2L, 3L),
     !(gameTypeId == 2L & period == 5L)
@@ -248,10 +254,30 @@ pbp <- pbp %>%
     isRebound = dplyr::coalesce(as.logical(isRebound), FALSE),
     createdReboundFlag = dplyr::coalesce(as.logical(createdRebound), FALSE),
     goalieIdResolved = as.integer(dplyr::coalesce(
-      goaliePlayerIdAgainst,
-      goalieInNetIdCompat
+      goalieInNetIdFallback,
+      goaliePlayerIdAgainst
     ))
   )
+
+available_game_ids <- sort(unique(as.integer(pbp$gameId)))
+games <- games %>%
+  dplyr::filter(gameId %in% available_game_ids)
+
+missing_game_ids <- setdiff(sort(unique(as.integer(games$gameId))), existing_game_ids)
+
+if (length(missing_game_ids) == 0L) {
+  cat("No missing goalie basic GBG games to append.\n")
+  quit(save = "no", status = 0)
+}
+
+games <- games %>%
+  dplyr::filter(gameId %in% missing_game_ids)
+
+goalie_games <- goalie_games %>%
+  dplyr::filter(gameId %in% missing_game_ids)
+
+pbp <- pbp %>%
+  dplyr::filter(gameId %in% missing_game_ids)
 
 game_dates <- dplyr::bind_rows(
   games %>% dplyr::select(gameId, gameTypeId, gameDate),
@@ -291,8 +317,7 @@ penalties <- pbp %>%
 
 shots_all <- pbp %>%
   dplyr::filter(
-    typeDescKey %in% c("goal", "shot-on-goal", "missed-shot", "blocked-shot"),
-    !(typeDescKey == "missed-shot" & reason == "short")
+    typeDescKey %in% c("goal", "shot-on-goal", "missed-shot", "blocked-shot")
   ) %>%
   dplyr::mutate(
     value = 1,
@@ -359,7 +384,7 @@ goalies <- goalie_games %>%
 out_dir <- file.path("data", "gbgs", "basic")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-season_path <- file.path(out_dir, paste0("goalies_", SEASON, ".csv"))
+goalies <- append_gbg_rows(existing, goalies, id_cols = c("playerId", "gameId", "teamId"))
 readr::write_csv(goalies, season_path)
 
 cat("Wrote season file:", season_path, "\n")

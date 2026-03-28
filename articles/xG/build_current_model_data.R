@@ -15,7 +15,7 @@ CURRENT_V3_MODELS <- tibble::tribble(
   "pp", "pp1", "xgboost",
   "sh", "sh2", "lightgbm",
   "en", "en2", "lightgbm",
-  "so", "so1", "xgboost"
+  "ps", "ps1", "xgboost"
 )
 
 read_results_rds <- function(model_key) {
@@ -29,7 +29,7 @@ dataset_label <- function(x) {
     x == "pp" ~ "Power Play",
     x == "sh" ~ "Shorthanded",
     x == "en" ~ "Empty Net",
-    x == "so" ~ "Shootout / Penalty Shot",
+    x == "ps" ~ "Penalty Shot",
     TRUE ~ x
   )
 }
@@ -78,7 +78,7 @@ current_training_summary <- purrr::pmap_dfr(
         "Shorthanded",
         "Non-Standard Even Strength",
         "Empty Net",
-        "Shootout / Penalty Shot"
+        "Penalty Shot"
       )
     )
   ) %>%
@@ -221,7 +221,7 @@ current_unseen_future_by_partition <- dplyr::bind_rows(
         "Power Play",
         "Shorthanded",
         "Empty Net",
-        "Shootout / Penalty Shot"
+        "Penalty Shot"
       )
     ),
     label = factor(label, levels = c("XGBoost", "LightGBM", "Hybrid V3"))
@@ -273,7 +273,7 @@ current_feature_importance <- purrr::pmap_dfr(
         "Power Play",
         "Shorthanded",
         "Empty Net",
-        "Shootout / Penalty Shot"
+        "Penalty Shot"
       )
     )
   ) %>%

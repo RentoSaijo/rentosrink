@@ -8,6 +8,7 @@ LEGACY_SEASON_MAP <- list(
   `2` = c(20162017L, 20172018L)
 )
 OUTPUT_DIR <- file.path("models", "xG", "legacy")
+OUTPUT_DATA_DIR <- file.path(OUTPUT_DIR, "data")
 
 get_legacy_seasons <- function(version) {
   version_key <- as.character(as.integer(version))
@@ -46,7 +47,6 @@ prepare_legacy_xg_shots <- function(seasons) {
   shots <- pbps %>%
     dplyr::filter(
       gameTypeId %in% 2:3,
-      !(eventTypeDescKey == "missed-shot" & reason == "short"),
       eventTypeDescKey %in% c("goal", "shot-on-goal", "missed-shot")
     ) %>%
     dplyr::left_join(
@@ -66,59 +66,9 @@ prepare_legacy_xg_shots <- function(seasons) {
         shot_type_prev = shotTypePrev,
         event_owner_team_id_prev = eventOwnerTeamIdPrev,
         event_owner_team_id = eventOwnerTeamId
-      ),
-      is_ps = situationCode %in% c("1010", "0101"),
-      is_en = !is_ps & isEmptyNetAgainst,
-      is_sd_standard = (
-        !is_ps &
-        !is_en &
-        skaterCountFor == 5 &
-        skaterCountAgainst == 5 &
-        !isEmptyNetFor &
-        !isEmptyNetAgainst
-      ),
-      is_unclassifiable_strength = (
-        !is_ps &
-        !is_en &
-        (
-          is.na(situationCode) |
-          is.na(skaterCountFor) |
-          is.na(skaterCountAgainst) |
-          is.na(strengthState)
-        )
-      ),
-      is_sd = dplyr::coalesce(is_sd_standard, FALSE) | dplyr::coalesce(is_unclassifiable_strength, FALSE),
-      is_ev = (
-        !is_ps &
-        !is_en &
-        skaterCountFor == skaterCountAgainst &
-        !is_sd
-      ),
-      is_pp = (
-        !is_ps &
-        !is_en &
-        skaterCountFor > skaterCountAgainst
-      ),
-      is_sh = (
-        !is_ps &
-        !is_en &
-        skaterCountFor < skaterCountAgainst
-      ),
-      is_ev = dplyr::coalesce(is_ev, FALSE),
-      is_pp = dplyr::coalesce(is_pp, FALSE),
-      is_sh = dplyr::coalesce(is_sh, FALSE),
-      n_situations = as.integer(is_ps) + as.integer(is_en) + as.integer(is_sd) +
-        as.integer(is_ev) + as.integer(is_pp) + as.integer(is_sh),
-      situation = dplyr::case_when(
-        is_ps ~ "ps",
-        is_en ~ "en",
-        is_sd ~ "sd",
-        is_ev ~ "ev",
-        is_pp ~ "pp",
-        is_sh ~ "sh",
-        TRUE ~ NA_character_
       )
     ) %>%
+    append_xg_situation_columns() %>%
     dplyr::filter(is.na(shootingPlayerId) | !(shootingPlayerId %in% goalie_ids))
 
   required_shift_cols <- c(
@@ -216,7 +166,7 @@ run_legacy_clean <- function(version) {
   partitions <- build_xg_partitions(shots)
   partition_cols <- get_xg_partition_columns()
 
-  dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
+  dir.create(OUTPUT_DATA_DIR, recursive = TRUE, showWarnings = FALSE)
 
   purrr::iwalk(
     partitions,
@@ -224,7 +174,7 @@ run_legacy_clean <- function(version) {
       write_partition_csv(
         data = data,
         cols = partition_cols[[key]],
-        path = file.path(OUTPUT_DIR, paste0(key, version, "_train.csv")),
+        path = file.path(OUTPUT_DATA_DIR, paste0(key, version, "_train.csv")),
         label = paste0(key, version)
       )
     }

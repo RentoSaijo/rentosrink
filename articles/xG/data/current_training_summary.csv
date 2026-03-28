@@ -4,4 +4,4 @@ pp,Power Play,pp1,xgboost,XGBoost,"2023,2024",2793,38903,0.0972932678713724
 sh,Shorthanded,sh2,lightgbm,LightGBM,"2023,2024",2241,5539,0.07384004332912078
 ev,Non-Standard Even Strength,ev2,lightgbm,LightGBM,"2023,2024",1280,4907,0.11126961483594865
 en,Empty Net,en2,lightgbm,LightGBM,"2023,2024",1245,1828,0.5738512035010941
-so,Shootout / Penalty Shot,so1,xgboost,XGBoost,"2023,2024",230,1188,0.31565656565656564
+ps,Penalty Shot,ps1,xgboost,XGBoost,"2023,2024",230,1192,0.3145973154362416

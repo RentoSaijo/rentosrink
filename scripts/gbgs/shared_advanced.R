@@ -4,6 +4,54 @@
   x
 }
 
+load_existing_gbg_file <- function(path) {
+  if (!file.exists(path)) {
+    return(tibble::tibble())
+  }
+
+  readr::read_csv(path, show_col_types = FALSE)
+}
+
+extract_existing_game_ids <- function(existing) {
+  if (!"gameId" %in% names(existing)) {
+    return(integer())
+  }
+
+  existing %>%
+    dplyr::transmute(gameId = as.integer(gameId)) %>%
+    dplyr::filter(!is.na(gameId)) %>%
+    dplyr::distinct() %>%
+    dplyr::pull(gameId) %>%
+    as.integer()
+}
+
+append_gbg_rows <- function(existing, additions, id_cols) {
+  if (nrow(existing) == 0L) {
+    return(additions %>% dplyr::arrange(dplyr::across(dplyr::all_of(id_cols))))
+  }
+
+  if (nrow(additions) == 0L) {
+    return(existing %>% dplyr::arrange(dplyr::across(dplyr::all_of(id_cols))))
+  }
+
+  all_cols <- union(names(existing), names(additions))
+
+  for (col in setdiff(all_cols, names(existing))) {
+    existing[[col]] <- NA
+  }
+
+  for (col in setdiff(all_cols, names(additions))) {
+    additions[[col]] <- NA
+  }
+
+  dplyr::bind_rows(
+    existing %>% dplyr::select(dplyr::all_of(all_cols)),
+    additions %>% dplyr::select(dplyr::all_of(all_cols))
+  ) %>%
+    dplyr::distinct(!!!rlang::syms(id_cols), .keep_all = TRUE) %>%
+    dplyr::arrange(dplyr::across(dplyr::all_of(id_cols)))
+}
+
 normalize_gbg_strength <- function(x) {
   out <- stringr::str_to_lower(as.character(x))
   out <- stringr::str_trim(out)

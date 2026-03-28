@@ -14,7 +14,7 @@ DATASET_ORDER = [
     "Power Play",
     "Shorthanded",
     "Empty Net",
-    "Shootout / Penalty Shot",
+    "Penalty Shot",
 ]
 ENGINE_COLORS = {
     "XGBoost": "#2E86C1",
@@ -32,7 +32,7 @@ DATASET_COLORS = {
     "Power Play": "#D68910",
     "Shorthanded": "#A93226",
     "Empty Net": "#148F77",
-    "Shootout / Penalty Shot": "#6C3483",
+    "Penalty Shot": "#6C3483",
 }
 CHART_LABELS = {
     "Standard 5v5": "Standard<br>5v5",
@@ -40,7 +40,7 @@ CHART_LABELS = {
     "Power Play": "Power<br>Play",
     "Shorthanded": "Short-<br>Handed",
     "Empty Net": "Empty<br>Net",
-    "Shootout / Penalty Shot": "Shootout /<br>Penalty Shot",
+    "Penalty Shot": "Penalty<br>Shot",
 }
 TAB_LABELS = {
     "Standard 5v5": "5v5",
@@ -48,7 +48,7 @@ TAB_LABELS = {
     "Power Play": "PP",
     "Shorthanded": "SH",
     "Empty Net": "EN",
-    "Shootout / Penalty Shot": "SO/PS",
+    "Penalty Shot": "PS",
 }
 DEFAULT_COLOR_ORDER = ["#636EFA", "#EF553B", "#00CC96", "#AB63FA", "#FFA15A", "#19D3F3"]
 ARCHIVED_V4_UNSEEN_FUTURE = pd.DataFrame(
@@ -293,7 +293,7 @@ engine_partition_df = partition_df.loc[partition_df["label"].astype(str).isin(["
 engine_partition_df["datasetLabel"] = engine_partition_df["datasetLabel"].astype(str)
 
 engine_choice_rows = []
-for dataset in ["sd", "ev", "pp", "sh", "en", "so"]:
+for dataset in ["sd", "ev", "pp", "sh", "en", "ps"]:
     d = engine_partition_df.loc[engine_partition_df["dataset"] == dataset].sort_values("log_loss").reset_index(drop=True)
     best = d.iloc[0]
     other = d.iloc[1]
@@ -329,7 +329,7 @@ st.markdown(
     "The modern prep path starts with `nhlscraper::gc_pbps()`, then adds shift charts, event-to-event deltas, and shooter and goalie biometrics before any partition-specific modeling begins. That matters because the new family is not just a different learner on the same old input table. It now carries explicit shift-time workload context into the feature set, including shooter shift time, shooter rest since last shift, and on-ice skater shift and rest summaries for both teams. Those variables were the clearest missing piece in the archived page, and they are now part of the foundation."
 )
 st.markdown(
-    "The other notable preparation change is subtractive rather than additive. `missed-shot` rows with `reason == \"short\"` are dropped throughout the pipeline. Following Neil Pierre-Louis' observation that these records are barely even shot attempts, the project now treats them as noise rather than signal. The practical consequence is consistency: the same omission applies in training, testing, comparison, and published shot-by-shot scoring instead of being handled differently in different contexts."
+    "The other notable preparation change is now additive rather than subtractive. `missed-shot` rows with `reason == \"short\"` are kept throughout the pipeline instead of being dropped. They still collapse into the existing `other` missed-reason bucket when previous-event context is encoded, so the change is event inclusion rather than a new standalone reason level. The practical consequence is consistency: the same inclusion now applies in training, testing, comparison, and published shot-by-shot scoring."
 )
 
 st.markdown("## III. Architecture")
@@ -363,9 +363,9 @@ partition_table = pd.DataFrame(
             "Deployed Model": "en2 (LightGBM)",
         },
         {
-            "Partition": "Shootout / Penalty Shot",
-            "Rule": "`situationCode` is `0101` or `1010`.",
-            "Deployed Model": "so1 (XGBoost)",
+            "Partition": "Penalty Shot",
+            "Rule": "`situationCode` is `0101` or `1010`; the `ps` model is still trained on both penalty-shot and shootout-style rows.",
+            "Deployed Model": "ps1 (XGBoost)",
         },
     ]
 )
@@ -410,7 +410,7 @@ st.markdown(
     "The new generation uses boosted-tree models because the modern training window is large enough, and rich enough in interaction structure, that linear ridge models would leave meaningful signal untapped. Distance and angle still anchor the problem, but the newer family also has to reconcile movement deltas, pre-shot event context, manpower state, scoreboard state, biometrics, and shift-time workload features. Tree boosting is a practical fit for that mix because it can model nonlinearities and interactions without forcing the project to hand-code an unwieldy number of cross terms."
 )
 st.markdown(
-    "XGBoost and LightGBM were both retained because neither engine wins everywhere. The new training workflow tunes each partition separately and does not blindly accept the most complex candidate; when simpler configurations sit within the one-standard-error band of the raw best result, the workflow prefers the simpler option. From there, the deployment choice is made partition by partition. XGBoost holds the edge for Standard 5v5, Power Play, and Shootout / Penalty Shot. LightGBM wins for Non-Standard Even Strength, Shorthanded, and Empty Net. The result is a mixed production bundle because the forward evidence says a mixed bundle is better than a single-engine rule."
+    "XGBoost and LightGBM were both retained because neither engine wins everywhere. The new training workflow tunes each partition separately and does not blindly accept the most complex candidate; when simpler configurations sit within the one-standard-error band of the raw best result, the workflow prefers the simpler option. From there, the deployment choice is made partition by partition. XGBoost holds the edge for Standard 5v5, Power Play, and Penalty Shot. LightGBM wins for Non-Standard Even Strength, Shorthanded, and Empty Net. The result is a mixed production bundle because the forward evidence says a mixed bundle is better than a single-engine rule."
 )
 st.markdown(
     "That flexibility is also why redundant variables are not automatically a problem here. In a tree-based model, correlated predictors can still be useful because different splits may exploit similar information at different thresholds or in different interaction paths. Redundancy can diffuse feature-importance rankings and it does not guarantee better generalization, but it is not inherently harmful in the way it would often be for a tightly specified linear model."
@@ -455,7 +455,7 @@ st.markdown(
     "For `isRush` and `isRebound`, the underlying definitions are the same as in the archived article; what changed here is the verification. The wording below now matches the `nhlscraper` implementation directly. In the package's shot-context computation, `isRush` becomes true when a shot attempt occurs within four seconds of the most recent neutral-zone or defensive-zone event in the same game without a stoppage, faceoff, or period boundary reset. `isRebound` becomes true when a shot attempt occurs within three seconds of the same team's most recent `shot-on-goal`, `missed-shot`, or `blocked-shot` source event, again with the context reset by stoppages. Penalty-shot and shootout-style rows are explicitly forced to `FALSE` for both flags."
 )
 st.markdown(
-    "The `so` partition is intentionally simpler than the other five. It keeps the core spatial, scoreboard, and shooter/goalie profile inputs, but it does not carry the full shift-time and manpower-state feature stack because shootout-style events are structurally different from in-flow game play. That smaller predictor set is a modeling choice, not a data limitation."
+    "The `ps` partition is intentionally simpler than the other five. It keeps the core spatial, scoreboard, and shooter/goalie profile inputs, but it does not carry the full shift-time and manpower-state feature stack because penalty-shot and shootout-style events are structurally different from in-flow game play. That smaller predictor set is a modeling choice, not a data limitation."
 )
 
 st.markdown("### D. Versioning")
@@ -773,7 +773,7 @@ st.markdown(
     "The shot-by-shot scoring pipeline rebuilds the same season-level attempt table, carries the same partition logic, and uses the season-appropriate xG family to score the Fenwick rows before the skater and goalie outputs are written. Blocked shots remain in shot-by-shot scoring because the downstream shot-attempt views care about full Corsi accounting, but those rows are assigned `xG = 0` because the xG models themselves are trained and scored only on Fenwick events."
 )
 st.markdown(
-    "The SBSS output rules mirror the model prep carefully. Regular-season shootout attempts are removed before final output even though the `so` partition is still how penalty-shot and shootout-style events are modeled. Penalty shots remain and their written `strengthState` is normalized to `even-strength`. Empty-net attempts stay in skater SBSS, but only reach goalie SBSS when a defending goalie identifier is actually present. Those details matter because they prevent the published files from drifting away from the model assumptions that produced the xG values in the first place."
+    "The SBSS output rules mirror the model prep carefully. Regular-season shootout attempts are removed before final output even though the `ps` partition is still how penalty-shot and shootout-style events are modeled. Penalty shots remain and their written `strengthState` is normalized to `even-strength`. Empty-net attempts stay in skater SBSS, but only reach goalie SBSS when a defending goalie identifier is actually present. Those details matter because they prevent the published files from drifting away from the model assumptions that produced the xG values in the first place."
 )
 
 st.markdown("### B. Season Coverage and Leakage Policy")
@@ -815,12 +815,12 @@ st.markdown(
     "There is one explicit limitation in the new 2023-24 and 2024-25 crossfit path, and it should be stated plainly. The refits reuse the previously selected best hyperparameters from the new training artifacts, and those hyperparameters were originally chosen on the full pooled 2023-24 / 2024-25 training window. The held-out shots are therefore excluded from the final fit for their fold, but they did indirectly influence the chosen tuning values. That is weaker than fully nested cross-validation, but stronger than simply scoring those seasons with the fully trained saved models. The code treats this as a known compromise, not as something to hide."
 )
 st.markdown(
-    "Older seasons add one more historical safeguard. If the legacy-strength inputs needed for clean classification are missing, the pipeline first rules out penalty-shot and empty-net cases and then forces the remaining row into `sd`. That keeps the partitioning exhaustive in sparse historical data instead of discarding rows or pretending that missing manpower context is harmless."
+    "Older seasons add one more historical safeguard. If the legacy skater-count inputs needed for clean classification are missing, the pipeline first rules out penalty-shot and empty-net cases and then forces the remaining row into `sd`. That keeps the partitioning exhaustive in sparse historical data instead of discarding rows or pretending that missing manpower context is harmless."
 )
 
 st.markdown("## VII. Conclusion")
 st.markdown(
-    "The new xG system is best understood as a season-aware deployment family rather than as a single static model. It uses a modern shared prep path, six game-state partitions, new tree models trained on 2023-24 and 2024-25, a hybrid per-partition deployment bundle for 2025-26, and explicit leakage safeguards when historical or in-window backfilling would otherwise be misleading. That framing is more complicated than the archived V1-V4 article, but it is also more truthful about how the project actually uses xG. There are still meaningful limitations. The model still works from event data rather than full tracking, so passing structure, traffic, release deception, and puck height remain only partially observed. The crossfit path for 2023-24 and 2024-25 still inherits some hyperparameter-selection leakage because it reuses the previously selected tuning values. And the smallest partitions, especially empty-net and shootout-style events, will always be more sample-constrained than 5v5. Even so, this version is materially stronger than the archived article suggested: the shift-time predictors are real, the short-miss cleanup is enforced consistently, the versioning now reflects deployment reality, and the unseen-future comparison shows why the new system is a hybrid instead of a single-engine monolith."
+    "The new xG system is best understood as a season-aware deployment family rather than as a single static model. It uses a modern shared prep path, six game-state partitions, new tree models trained on 2023-24 and 2024-25, a hybrid per-partition deployment bundle for 2025-26, and explicit leakage safeguards when historical or in-window backfilling would otherwise be misleading. That framing is more complicated than the archived V1-V4 article, but it is also more truthful about how the project actually uses xG. There are still meaningful limitations. The model still works from event data rather than full tracking, so passing structure, traffic, release deception, and puck height remain only partially observed. The crossfit path for 2023-24 and 2024-25 still inherits some hyperparameter-selection leakage because it reuses the previously selected tuning values. And the smallest partitions, especially empty-net and penalty-shot / shootout-style events, will always be more sample-constrained than 5v5. Even so, this version is materially stronger than the archived article suggested: the shift-time predictors are real, the short-miss cleanup is now reversed consistently, the versioning now reflects deployment reality, and the unseen-future comparison shows why the new system is a hybrid instead of a single-engine monolith."
 )
 
 st.markdown("The downstream summaries built from these model outputs remain available here:")

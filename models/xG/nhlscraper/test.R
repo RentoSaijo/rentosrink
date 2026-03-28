@@ -15,7 +15,7 @@ MODEL_DIR <- file.path("models", "xG", "nhlscraper")
 MODEL_LABEL <- "ridge_glmnet"
 
 load_models <- function() {
-  datasets <- c("sd", "ev", "pp", "sh", "en", "so")
+  datasets <- c("sd", "ev", "pp", "sh", "en", "ps")
 
   purrr::map(
     datasets,

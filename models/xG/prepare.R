@@ -24,6 +24,117 @@ normalize_missed_reason <- function(x) {
   )
 }
 
+classify_xg_situations <- function(
+    situation_code,
+    is_empty_net_for,
+    is_empty_net_against,
+    skater_count_for,
+    skater_count_against
+) {
+  situation_code <- as.character(situation_code)
+  is_empty_net_for <- dplyr::coalesce(as.logical(is_empty_net_for), FALSE)
+  is_empty_net_against <- dplyr::coalesce(as.logical(is_empty_net_against), FALSE)
+  skater_count_for <- suppressWarnings(as.integer(skater_count_for))
+  skater_count_against <- suppressWarnings(as.integer(skater_count_against))
+
+  is_ps <- !is.na(situation_code) & situation_code %in% c("1010", "0101")
+  is_en <- !is_ps & is_empty_net_against
+  is_sd_standard <- (
+    !is_ps &
+      !is_en &
+      !is.na(skater_count_for) &
+      !is.na(skater_count_against) &
+      skater_count_for == 5L &
+      skater_count_against == 5L &
+      !is_empty_net_for &
+      !is_empty_net_against
+  )
+  is_ev <- (
+    !is_ps &
+      !is_en &
+      !is.na(skater_count_for) &
+      !is.na(skater_count_against) &
+      skater_count_for == skater_count_against &
+      !is_sd_standard
+  )
+  is_pp <- (
+    !is_ps &
+      !is_en &
+      !is.na(skater_count_for) &
+      !is.na(skater_count_against) &
+      skater_count_for > skater_count_against
+  )
+  is_sh <- (
+    !is_ps &
+      !is_en &
+      !is.na(skater_count_for) &
+      !is.na(skater_count_against) &
+      skater_count_for < skater_count_against
+  )
+  is_uncategorizable_partition <- !(
+    is_ps |
+      is_en |
+      is_sd_standard |
+      is_ev |
+      is_pp |
+      is_sh
+  )
+  is_sd <- is_sd_standard | is_uncategorizable_partition
+
+  tibble::tibble(
+    is_ps = is_ps,
+    is_en = is_en,
+    is_sd = is_sd,
+    is_ev = is_ev,
+    is_pp = is_pp,
+    is_sh = is_sh,
+    n_situations = (
+      as.integer(is_ps) +
+        as.integer(is_en) +
+        as.integer(is_sd) +
+        as.integer(is_ev) +
+        as.integer(is_pp) +
+        as.integer(is_sh)
+    ),
+    situation = dplyr::case_when(
+      is_ps ~ "ps",
+      is_en ~ "en",
+      is_sd ~ "sd",
+      is_ev ~ "ev",
+      is_pp ~ "pp",
+      is_sh ~ "sh",
+      TRUE ~ NA_character_
+    )
+  )
+}
+
+append_xg_situation_columns <- function(data) {
+  dplyr::bind_cols(
+    data,
+    classify_xg_situations(
+      situation_code = data$situationCode,
+      is_empty_net_for = data$isEmptyNetFor,
+      is_empty_net_against = data$isEmptyNetAgainst,
+      skater_count_for = data$skaterCountFor,
+      skater_count_against = data$skaterCountAgainst
+    )
+  )
+}
+
+ensure_goalie_player_id_against <- function(data) {
+  if ("goalieInNetId" %in% names(data)) {
+    goalie_in_net <- suppressWarnings(as.integer(data$goalieInNetId))
+    if ("goaliePlayerIdAgainst" %in% names(data)) {
+      goalie_against <- suppressWarnings(as.integer(data$goaliePlayerIdAgainst))
+      data$goaliePlayerIdAgainst <- dplyr::coalesce(goalie_in_net, goalie_against)
+    } else {
+      data$goaliePlayerIdAgainst <- goalie_in_net
+    }
+  }
+
+  data
+}
+
 is_behind_net <- function(x_coord_norm, goal_line_x = 89) {
   !is.na(x_coord_norm) & x_coord_norm >= goal_line_x
 }
@@ -217,6 +328,8 @@ add_shift_list_columns <- function(data) {
 }
 
 normalize_xg_pbp_schema <- function(data) {
+  data <- ensure_goalie_player_id_against(data)
+
   required_cols <- c(
     "eventTypeDescKey",
     "goaliePlayerIdAgainst",
@@ -257,10 +370,13 @@ load_xg_season <- function(season) {
   cat(glue::glue("Loading {season}...\n"))
 
   nhlscraper::gc_pbps(season) %>%
+    ensure_goalie_player_id_against() %>%
     nhlscraper::add_shift_times(nhlscraper::shift_charts(season)) %>%
     nhlscraper::add_deltas() %>%
     nhlscraper::add_shooter_biometrics() %>%
-    nhlscraper::add_goalie_biometrics()
+    ensure_goalie_player_id_against() %>%
+    nhlscraper::add_goalie_biometrics() %>%
+    ensure_goalie_player_id_against()
 }
 
 prepare_xg_shots <- function(seasons) {
@@ -289,7 +405,6 @@ prepare_xg_shots <- function(seasons) {
   shots <- pbps %>%
     dplyr::filter(
       gameTypeId %in% 2:3,
-      !(eventTypeDescKey == "missed-shot" & reason == "short"),
       eventTypeDescKey %in% c("goal", "shot-on-goal", "missed-shot")
     ) %>%
     dplyr::left_join(
@@ -309,51 +424,9 @@ prepare_xg_shots <- function(seasons) {
         shot_type_prev = shotTypePrev,
         event_owner_team_id_prev = eventOwnerTeamIdPrev,
         event_owner_team_id = eventOwnerTeamId
-      ),
-      is_ps = situationCode %in% c("1010", "0101"),
-      is_en = !is_ps & isEmptyNetAgainst,
-      is_sd = (
-        !is_ps &
-        !is_en &
-        skaterCountFor == 5 &
-        skaterCountAgainst == 5 &
-        !isEmptyNetFor &
-        !isEmptyNetAgainst
-      ),
-      is_ev = (
-        !is_ps &
-        !is_en &
-        skaterCountFor == skaterCountAgainst &
-        !is_sd
-      ),
-      is_pp = (
-        !is_ps &
-        !is_en &
-        skaterCountFor > skaterCountAgainst
-      ),
-      is_sh = (
-        !is_ps &
-        !is_en &
-        skaterCountFor < skaterCountAgainst
-      ),
-      n_situations = (
-        as.integer(is_ps) +
-        as.integer(is_en) +
-        as.integer(is_sd) +
-        as.integer(is_ev) +
-        as.integer(is_pp) +
-        as.integer(is_sh)
-      ),
-      situation = dplyr::case_when(
-        is_ps ~ "ps",
-        is_en ~ "en",
-        is_sd ~ "sd",
-        is_ev ~ "ev",
-        is_pp ~ "pp",
-        is_sh ~ "sh",
-        TRUE ~ NA_character_
       )
     ) %>%
+    append_xg_situation_columns() %>%
     dplyr::filter(is.na(shootingPlayerId) | !(shootingPlayerId %in% goalie_ids))
 
   required_shift_cols <- c(
@@ -521,7 +594,7 @@ get_xg_partition_columns <- function() {
     "strengthState"
   )
 
-  so_predictor_cols <- c(
+  ps_predictor_cols <- c(
     "isPlayoff",
     "isHome",
     "xCoordNorm",
@@ -559,7 +632,7 @@ get_xg_partition_columns <- function() {
     ev_cols,
     c("goalieHeight", "goalieWeight", "goalieHandCode", "goalieAge")
   )
-  so_cols <- c(id_cols, so_predictor_cols, response_cols)
+  ps_cols <- c(id_cols, ps_predictor_cols, response_cols)
 
   list(
     sd = sd_cols,
@@ -567,7 +640,7 @@ get_xg_partition_columns <- function() {
     pp = ev_cols,
     sh = ev_cols,
     en = en_cols,
-    so = so_cols
+    ps = ps_cols
   )
 }
 
@@ -595,7 +668,7 @@ build_xg_partitions <- function(shots) {
     pp = shots %>% dplyr::filter(situation == "pp"),
     sh = shots %>% dplyr::filter(situation == "sh"),
     en = shots %>% dplyr::filter(situation == "en"),
-    so = shots %>% dplyr::filter(situation == "ps")
+    ps = shots %>% dplyr::filter(situation == "ps")
   )
 
   purrr::imap(

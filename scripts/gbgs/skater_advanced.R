@@ -6,6 +6,10 @@ SEASON <- as.integer(season_env)
 source(file.path("scripts", "sbss", "shared.R"))
 source(file.path("scripts", "gbgs", "shared_advanced.R"))
 
+aggregate_path <- file.path("data", "gbgs", "advanced", paste0("skaters_", SEASON, ".csv"))
+existing <- load_existing_gbg_file(aggregate_path)
+existing_game_ids <- extract_existing_game_ids(existing)
+
 season_game_ids <- readr::read_csv(
   file.path("data", "games.csv"),
   show_col_types = FALSE
@@ -19,6 +23,13 @@ season_game_ids <- readr::read_csv(
   unique() %>%
   sort()
 
+missing_game_ids <- setdiff(season_game_ids, existing_game_ids)
+
+if (length(missing_game_ids) == 0L) {
+  cat("No missing skater advanced GBG games to append.\n")
+  quit(save = "no", status = 0)
+}
+
 cat("Loading skater GBG base...\n")
 base <- readr::read_csv(
   file.path("data", "gbgs", "basic", paste0("skaters_", SEASON, ".csv")),
@@ -29,7 +40,7 @@ base <- readr::read_csv(
     gameId = as.integer(gameId),
     teamId = as.integer(teamId)
   ) %>%
-  dplyr::filter(gameId %in% season_game_ids)
+  dplyr::filter(gameId %in% missing_game_ids)
 
 skater_ids <- sort(unique(base$playerId))
 
@@ -46,7 +57,7 @@ sbs <- readr::read_csv(
     xG = as.numeric(xG),
     goaliePlayerId = as.integer(goaliePlayerId)
   ) %>%
-  dplyr::filter(gameId %in% season_game_ids) %>%
+  dplyr::filter(gameId %in% missing_game_ids) %>%
   dplyr::mutate(strengthAgainst = flip_strength_code(strengthFor)) %>%
   dplyr::filter(strengthFor %in% c("ev", "pp", "sh"))
 
@@ -57,8 +68,8 @@ attempt_context <- prepare_sbss_shot_attempts(SEASON) %>%
     eventId = as.integer(eventId),
     playerIdsFor = playerIdsFor,
     playerIdsAgainst = playerIdsAgainst
-  ) %>%
-  dplyr::filter(gameId %in% season_game_ids)
+) %>%
+  dplyr::filter(gameId %in% missing_game_ids)
 
 attempts <- sbs %>%
   dplyr::left_join(attempt_context, by = c("gameId", "eventId"))
@@ -101,8 +112,8 @@ skaters <- build_gbg_output(
   metrics = metrics
 )
 
-aggregate_path <- file.path("data", "gbgs", "advanced", paste0("skaters_", SEASON, ".csv"))
 dir.create(dirname(aggregate_path), recursive = TRUE, showWarnings = FALSE)
+skaters <- append_gbg_rows(existing, skaters, id_cols = c("playerId", "gameId", "teamId"))
 readr::write_csv(skaters, aggregate_path)
 
 cat("Wrote season file:", aggregate_path, "\n")

@@ -25,13 +25,13 @@ SBSS is aggregate-only. There are no split per-entity SBSS files.
 - Each row is one shot attempt.
 - The scripts include both regular season and playoffs because the upstream xG prep filters `gameTypeId %in% 2:3`.
 - `gameTypeId` is not written because it is inferable from `gameId`, matching the GBG convention.
-- `missed-shot` rows with `reason == "short"` are excluded everywhere. This mirrors the xG training, test, and compare pipelines.
+- `missed-shot` rows with `reason == "short"` are included everywhere. For previous-event context they still normalize into the existing `other` missed-shot-reason bucket, matching xG prep.
 - Regular-season shootout attempts are excluded from SBSS output. Concretely, rows with `gameTypeId == 2` and `periodNumber == 5` are removed before evaluation/output.
-- Penalty shots stay in SBSS output. They still score through the `so` xG partition, but their written `strengthState` is forced to `even-strength`.
+- Penalty shots stay in SBSS output. They still score through the `ps` xG partition, but their written `strengthState` is forced to `even-strength`.
 - Goalie shooters are excluded before output, again matching xG prep.
 - SBSS keeps blocked shots, but `xG` is only model-scored for fenwick rows.
 - Concretely, blocked-shot rows are retained with `isCorsi = TRUE`, `isFenwick = FALSE`, `isShot = FALSE`, `isGoal = FALSE`, and `xG = 0`.
-- Empty-net rows stay in skater SBSS. They only appear in goalie SBSS when `goaliePlayerIdAgainst` is present.
+- Empty-net rows stay in skater SBSS. They only appear in goalie SBSS when a goalie can be resolved from `goalieInNetId` first, then `goaliePlayerIdAgainst`.
 - The output is sorted by entity, then `gameId`, then `eventId`.
 
 ## Shot Flags
@@ -111,7 +111,7 @@ Shared prep steps:
 - Rebuild `typeDescKeyPrev` from the prior event in the same game using the same mapping as xG prep.
 - Build skater on-ice lists and shift/rest summaries from the shift-enriched slot columns.
 - Coalesce `shootingPlayerId` from `shootingPlayerId` and `scoringPlayerId`.
-- Carry the play-by-play `strengthState` forward for output only; if it is missing, output `even-strength`.
+- Carry the play-by-play `strengthState` forward for output only; if `situationCode` is missing, output `even-strength`.
 - Force penalty-shot output `strengthState` to `even-strength`.
 
 Derived spatial/context features reused from xG:
@@ -136,14 +136,14 @@ The xG system is six separate models:
 - `pp`: skater advantage, non-empty-net, non-penalty-shot
 - `sh`: skater disadvantage, non-empty-net, non-penalty-shot
 - `en`: shooter is attacking an empty net
-- `so`: penalty shots / shootout-style rows from `situationCode %in% c("1010", "0101")`
+- `ps`: penalty shots / shootout-style rows from `situationCode %in% c("1010", "0101")`
 
 Implementation details:
 
 - `is_ps` is checked first from `situationCode`.
 - This partitioning is separate from the output `strengthState` column.
-- Regular-season shootout rows still join the `so` partition for training, but they are removed before SBSS output and xG evaluation.
-- Non-shootout `0101` / `1010` rows are penalty shots; they stay in output and still use the `so` partition.
+- Regular-season shootout rows still join the `ps` partition for training, but they are removed before SBSS output and xG evaluation.
+- Non-shootout `0101` / `1010` rows are penalty shots; they stay in output and still use the `ps` partition.
 - `is_en` is checked next from `isEmptyNetAgainst`.
 - `sd` is standard 5v5 with both goalies present and both teams at 5 skaters.
 - `ev`, `pp`, and `sh` are then assigned from `skaterCountFor` and `skaterCountAgainst`.
@@ -151,11 +151,12 @@ Implementation details:
 
 ### Missing Situation Inputs
 
-Older seasons can have a small number of rows where `situationCode`, skater counts, or `strengthState` are unavailable.
+Older seasons can have a small number of rows where skater counts are unavailable.
 
 SBSS follows the legacy xG safeguard:
 
-- after ruling out `so` and `en`, any row missing the strength inputs needed to classify cleanly is forced into `sd`
+- after ruling out `ps` and `en`, any row missing the strength inputs needed to classify cleanly is forced into `sd`
+- this partition fallback is separate from the output `strengthState` rule above, which only forces `even-strength` when `situationCode` is missing or the row is a non-shootout penalty shot
 
 This matches [legacy/clean.R](/Users/rsai_91/Desktop/Work/rentosrink/models/xG/legacy/clean.R) and is the main preprocessing difference relative to the current non-legacy prep.
 
@@ -205,9 +206,9 @@ These three partitions use the full `sd` set plus:
 - `goalieHandCode`
 - `goalieAge`
 
-### `so`
+### `ps`
 
-`so` uses a much smaller set:
+`ps` uses a much smaller set:
 
 - playoff/home flags
 - `xCoordNorm`
@@ -225,7 +226,7 @@ These three partitions use the full `sd` set plus:
 
 Stored model files:
 
-- `models/xG/legacy/{sd,ev,pp,sh,en,so}1.rds`
+- `models/xG/legacy/{sd,ev,pp,sh,en,ps}1.rds`
 
 Stored best-parameter and preprocessing artifacts:
 
@@ -245,7 +246,7 @@ Usage in SBSS:
 
 Stored model files:
 
-- `models/xG/legacy/{sd,ev,pp,sh,en,so}2.rds`
+- `models/xG/legacy/{sd,ev,pp,sh,en,ps}2.rds`
 
 Stored best-parameter and preprocessing artifacts:
 
@@ -260,8 +261,8 @@ Usage in SBSS:
 
 Current stored model files:
 
-- v1 XGBoost: `models/xG/{sd,ev,pp,sh,en,so}1.rds`
-- v2 LightGBM: `models/xG/{sd,ev,pp,sh,en,so}2.rds`
+- v1 XGBoost: `models/xG/{sd,ev,pp,sh,en,ps}1.rds`
+- v2 LightGBM: `models/xG/{sd,ev,pp,sh,en,ps}2.rds`
 
 Current best-parameter artifacts:
 
@@ -277,7 +278,7 @@ The preferred architecture is defined in [compare.R](/Users/rsai_91/Desktop/Work
 - `pp`: v1 XGBoost
 - `sh`: v2 LightGBM
 - `en`: v2 LightGBM
-- `so`: v1 XGBoost
+- `ps`: v1 XGBoost
 
 Usage in SBSS:
 
@@ -296,6 +297,7 @@ SBSS avoids that by:
 - retraining only the needed legacy ridge partitions on:
   - the other 4 parts of the target season
   - the entirety of the other season in the `2010-11` / `2011-12` pair
+- re-tuning ridge penalty inside that temporary training window
 - scoring only the held-out part with those temporary models
 
 Implementation note:
@@ -317,11 +319,12 @@ SBSS therefore:
   - the other 4 parts of the target season
   - the entirety of the paired season
 - reuses the already-stored best hyperparameters from `models/xG/results/*_best_params.csv`
+- scores only the held-out part with those temporary models
 
 Important limitation:
 
 - this still leaks some information because the reused best hyperparameters were originally selected using the full `2023-24` / `2024-25` training pool, including the held-out shots
-- the held-out shots are not used in the final model fit for their part, but they did indirectly influence the chosen hyperparameters
+- the held-out shots are not used in the temporary model fit for their part, but they did indirectly influence the chosen hyperparameters
 
 ## Preprocessing Differences Between Legacy And Current Models
 

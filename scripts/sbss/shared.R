@@ -10,7 +10,7 @@ source(file.path("models", "xG", "prepare.R"))
 
 set.seed(20060527)
 
-XG_DATASETS <- c("sd", "ev", "pp", "sh", "en", "so")
+XG_DATASETS <- c("sd", "ev", "pp", "sh", "en", "ps")
 SBSS_PARTS <- 5L
 CURRENT_V3_ENGINES <- c(
   sd = "xgboost",
@@ -18,7 +18,7 @@ CURRENT_V3_ENGINES <- c(
   pp = "xgboost",
   sh = "lightgbm",
   en = "lightgbm",
-  so = "xgboost"
+  ps = "xgboost"
 )
 CURRENT_V3_MODEL_KEYS <- c(
   sd = "sd1",
@@ -26,7 +26,7 @@ CURRENT_V3_MODEL_KEYS <- c(
   pp = "pp1",
   sh = "sh2",
   en = "en2",
-  so = "so1"
+  ps = "ps1"
 )
 LEGACY_V1_PAIR <- c(20102011L, 20112012L)
 CURRENT_V3_PAIR <- c(20232024L, 20242025L)
@@ -94,14 +94,15 @@ is_penalty_shot_attempt <- function(situation_code, game_type_id, period_number)
 
 normalize_output_strength_state <- function(strength_state, situation_code, game_type_id, period_number) {
   out <- as.character(strength_state)
-  out[is.na(out) | stringr::str_trim(out) == ""] <- "even-strength"
+  sc <- normalize_situation_code(situation_code)
+  out[is.na(sc)] <- "even-strength"
   out[is_penalty_shot_attempt(situation_code, game_type_id, period_number)] <- "even-strength"
   out
 }
 
 score_dataset_key <- function(situation) {
   dplyr::case_when(
-    situation == "ps" ~ "so",
+    situation == "ps" ~ "ps",
     TRUE ~ situation
   )
 }
@@ -159,23 +160,23 @@ load_current_training_csv <- function(dataset) {
 
 load_legacy_training_csv <- function(dataset, version = 1L) {
   cached_read_csv(
-    file.path("models", "xG", "legacy", paste0(dataset, version, "_train.csv"))
+    file.path("models", "xG", "legacy", "data", paste0(dataset, version, "_train.csv"))
   )
 }
 
-load_saved_current_v3_models <- function() {
+load_saved_current_v3_models <- function(datasets = names(CURRENT_V3_MODEL_KEYS)) {
   purrr::map(
-    CURRENT_V3_MODEL_KEYS,
+    CURRENT_V3_MODEL_KEYS[datasets],
     ~ cached_read_rds(file.path("models", "xG", paste0(.x, ".rds")))
   )
 }
 
-load_saved_legacy_models <- function(version) {
+load_saved_legacy_models <- function(version, datasets = XG_DATASETS) {
   purrr::map(
-    XG_DATASETS,
+    datasets,
     ~ cached_read_rds(file.path("models", "xG", "legacy", paste0(.x, version, ".rds")))
   ) %>%
-    rlang::set_names(XG_DATASETS)
+    rlang::set_names(datasets)
 }
 
 load_current_best_params <- function(dataset) {
@@ -260,18 +261,6 @@ fit_legacy_ridge_model <- function(training_data) {
     2L,
     min(SBSS_LEGACY_ENV$N_FOLDS, dplyr::n_distinct(training_data$gameId))
   )
-  resamples <- rsample::group_vfold_cv(
-    training_data,
-    group = gameId,
-    v = fold_count,
-    balance = "observations"
-  )
-  metrics <- yardstick::metric_set(
-    yardstick::mn_log_loss,
-    SBSS_LEGACY_ENV$goal_roc_auc,
-    SBSS_LEGACY_ENV$goal_pr_auc,
-    yardstick::brier_class
-  )
 
   cluster_state <- SBSS_LEGACY_ENV$create_cluster()
   on.exit(SBSS_LEGACY_ENV$stop_cluster(cluster_state), add = TRUE)
@@ -285,9 +274,19 @@ fit_legacy_ridge_model <- function(training_data) {
 
     tuned <- tune::tune_grid(
       workflow,
-      resamples = resamples,
+      resamples = rsample::group_vfold_cv(
+        training_data,
+        group = gameId,
+        v = fold_count,
+        balance = "observations"
+      ),
       grid = tuning_grid,
-      metrics = metrics,
+      metrics = yardstick::metric_set(
+        yardstick::mn_log_loss,
+        SBSS_LEGACY_ENV$goal_roc_auc,
+        SBSS_LEGACY_ENV$goal_pr_auc,
+        yardstick::brier_class
+      ),
       control = tune::control_grid(
         verbose = FALSE,
         allow_par = cluster_state$n_workers > 1L,
@@ -371,13 +370,15 @@ make_game_parts <- function(data, n_parts = SBSS_PARTS) {
 
 score_legacy_saved <- function(eligible_attempts, version) {
   partitions <- build_xg_partitions(eligible_attempts)
-  models <- load_saved_legacy_models(version)
+  needed_datasets <- names(partitions)[vapply(partitions, nrow, integer(1)) > 0L]
+  models <- load_saved_legacy_models(version, datasets = needed_datasets)
   score_partition_frames(partitions, models, model_family = "legacy")
 }
 
 score_current_saved_v3 <- function(eligible_attempts) {
   partitions <- build_xg_partitions(eligible_attempts)
-  models <- load_saved_current_v3_models()
+  needed_datasets <- names(partitions)[vapply(partitions, nrow, integer(1)) > 0L]
+  models <- load_saved_current_v3_models(datasets = needed_datasets)
   score_partition_frames(partitions, models, model_family = "current")
 }
 
@@ -556,7 +557,6 @@ prepare_sbss_shot_attempts <- function(season_id) {
   attempts <- pbps %>%
     dplyr::filter(
       gameTypeId %in% 2:3,
-      !(eventTypeDescKey == "missed-shot" & reason == "short"),
       eventTypeDescKey %in% c("goal", "shot-on-goal", "missed-shot", "blocked-shot")
     ) %>%
     dplyr::left_join(
@@ -583,60 +583,9 @@ prepare_sbss_shot_attempts <- function(season_id) {
         shot_type_prev = shotTypePrev,
         event_owner_team_id_prev = eventOwnerTeamIdPrev,
         event_owner_team_id = eventOwnerTeamId
-      ),
-      is_ps = situationCode %in% c("1010", "0101"),
-      is_en = !is_ps & isEmptyNetAgainst,
-      is_sd_standard = (
-        !is_ps &
-          !is_en &
-          skaterCountFor == 5 &
-          skaterCountAgainst == 5 &
-          !isEmptyNetFor &
-          !isEmptyNetAgainst
-      ),
-      is_unclassifiable_strength = (
-        !is_ps &
-          !is_en &
-          (
-            is.na(situationCode) |
-              is.na(skaterCountFor) |
-              is.na(skaterCountAgainst) |
-              is.na(strengthState)
-          )
-      ),
-      is_sd = dplyr::coalesce(is_sd_standard, FALSE) |
-        dplyr::coalesce(is_unclassifiable_strength, FALSE),
-      is_ev = (
-        !is_ps &
-          !is_en &
-          skaterCountFor == skaterCountAgainst &
-          !is_sd
-      ),
-      is_pp = (
-        !is_ps &
-          !is_en &
-          skaterCountFor > skaterCountAgainst
-      ),
-      is_sh = (
-        !is_ps &
-          !is_en &
-          skaterCountFor < skaterCountAgainst
-      ),
-      is_ev = dplyr::coalesce(is_ev, FALSE),
-      is_pp = dplyr::coalesce(is_pp, FALSE),
-      is_sh = dplyr::coalesce(is_sh, FALSE),
-      n_situations = as.integer(is_ps) + as.integer(is_en) + as.integer(is_sd) +
-        as.integer(is_ev) + as.integer(is_pp) + as.integer(is_sh),
-      situation = dplyr::case_when(
-        is_ps ~ "ps",
-        is_en ~ "en",
-        is_sd ~ "sd",
-        is_ev ~ "ev",
-        is_pp ~ "pp",
-        is_sh ~ "sh",
-        TRUE ~ NA_character_
       )
     ) %>%
+    append_xg_situation_columns() %>%
     dplyr::filter(is.na(shootingPlayerId) | !(shootingPlayerId %in% goalie_ids))
 
   required_shift_cols <- c(
@@ -731,8 +680,8 @@ prepare_sbss_shot_attempts <- function(season_id) {
   attempts
 }
 
-build_scored_shot_attempts <- function(season_id) {
-  attempts <- prepare_sbss_shot_attempts(season_id) %>%
+build_scored_shot_attempts_from_attempts <- function(attempts, season_id) {
+  attempts <- attempts %>%
     dplyr::filter(!isShootout)
   eligible_attempts <- attempts %>%
     dplyr::filter(isFenwick)
@@ -757,6 +706,11 @@ build_scored_shot_attempts <- function(season_id) {
       xG = as.numeric(xG)
     ) %>%
     dplyr::select(-predictedXG)
+}
+
+build_scored_shot_attempts <- function(season_id) {
+  attempts <- prepare_sbss_shot_attempts(season_id)
+  build_scored_shot_attempts_from_attempts(attempts, season_id)
 }
 
 build_goalie_team_lookup <- function(scored_attempts) {
@@ -819,6 +773,29 @@ sbss_existing_event_keys <- function(existing) {
     dplyr::distinct()
 }
 
+append_sbss_entity_rows <- function(existing, additions, id_col) {
+  if (nrow(additions) == 0L) {
+    return(existing %>% dplyr::arrange(.data[[id_col]], gameId, eventId))
+  }
+
+  all_cols <- union(names(existing), names(additions))
+
+  for (col in setdiff(all_cols, names(existing))) {
+    existing[[col]] <- NA
+  }
+
+  for (col in setdiff(all_cols, names(additions))) {
+    additions[[col]] <- NA
+  }
+
+  dplyr::bind_rows(
+    existing %>% dplyr::select(dplyr::all_of(all_cols)),
+    additions %>% dplyr::select(dplyr::all_of(all_cols))
+  ) %>%
+    dplyr::distinct(gameId, eventId, .keep_all = TRUE) %>%
+    dplyr::arrange(.data[[id_col]], gameId, eventId)
+}
+
 rebuild_skater_sbss_from_existing <- function(season_id) {
   existing_path <- file.path("data", "sbss", paste0("skaters_", season_id, ".csv"))
   if (!file.exists(existing_path)) {
@@ -834,51 +811,22 @@ rebuild_skater_sbss_from_existing <- function(season_id) {
   if (nrow(missing_events) > 0L) {
     cat(
       sprintf(
-        "Existing skater sbss for %s is missing %d events across %d games; rebuilding from current attempts.\n",
+        "Existing skater sbss for %s is missing %d events across %d games; appending only missing events.\n",
         season_id,
         nrow(missing_events),
         dplyr::n_distinct(missing_events$gameId)
       )
     )
-    scored_attempts <- build_scored_shot_attempts(season_id)
-    return(build_skater_sbss(scored_attempts))
+    missing_attempts <- attempts %>%
+      dplyr::semi_join(missing_events, by = c("gameId", "eventId"))
+    additions <- missing_attempts %>%
+      build_scored_shot_attempts_from_attempts(season_id = season_id) %>%
+      build_skater_sbss()
+
+    return(append_sbss_entity_rows(existing, additions, id_col = "shooterPlayerId"))
   }
 
-  goalie_team_lookup <- build_goalie_team_lookup(attempts)
-
-  context <- attempts %>%
-    dplyr::filter(!is.na(shootingPlayerId)) %>%
-    dplyr::transmute(
-      shooterPlayerId = as.integer(shootingPlayerId),
-      gameId = as.integer(gameId),
-      eventId = as.integer(eventId),
-      goaliePlayerId = as.integer(goaliePlayerIdAgainst),
-      shooterTeamId = as.integer(eventOwnerTeamId)
-    ) %>%
-    dplyr::left_join(goalie_team_lookup, by = c("gameId", "goaliePlayerId")) %>%
-    dplyr::select(gameId, eventId, goaliePlayerId, goalieTeamId, shooterTeamId)
-
   existing %>%
-    dplyr::select(-dplyr::any_of(c("goaliePlayerId", "goalieTeamId", "shooterTeamId"))) %>%
-    dplyr::left_join(context, by = c("gameId", "eventId")) %>%
-    dplyr::select(
-      shooterPlayerId,
-      gameId,
-      eventId,
-      strengthState,
-      xCoordNorm,
-      yCoordNorm,
-      isRush,
-      isRebound,
-      isCorsi,
-      isFenwick,
-      isShot,
-      isGoal,
-      xG,
-      goaliePlayerId,
-      goalieTeamId,
-      shooterTeamId
-    ) %>%
     dplyr::arrange(shooterPlayerId, gameId, eventId)
 }
 
@@ -897,51 +845,22 @@ rebuild_goalie_sbss_from_existing <- function(season_id) {
   if (nrow(missing_events) > 0L) {
     cat(
       sprintf(
-        "Existing goalie sbss for %s is missing %d events across %d games; rebuilding from current attempts.\n",
+        "Existing goalie sbss for %s is missing %d events across %d games; appending only missing events.\n",
         season_id,
         nrow(missing_events),
         dplyr::n_distinct(missing_events$gameId)
       )
     )
-    scored_attempts <- build_scored_shot_attempts(season_id)
-    return(build_goalie_sbss(scored_attempts))
+    missing_attempts <- attempts %>%
+      dplyr::semi_join(missing_events, by = c("gameId", "eventId"))
+    additions <- missing_attempts %>%
+      build_scored_shot_attempts_from_attempts(season_id = season_id) %>%
+      build_goalie_sbss()
+
+    return(append_sbss_entity_rows(existing, additions, id_col = "goaliePlayerId"))
   }
 
-  goalie_team_lookup <- build_goalie_team_lookup(attempts)
-
-  context <- attempts %>%
-    dplyr::filter(!is.na(goaliePlayerIdAgainst)) %>%
-    dplyr::transmute(
-      goaliePlayerId = as.integer(goaliePlayerIdAgainst),
-      gameId = as.integer(gameId),
-      eventId = as.integer(eventId),
-      shooterPlayerId = as.integer(shootingPlayerId),
-      shooterTeamId = as.integer(eventOwnerTeamId)
-    ) %>%
-    dplyr::left_join(goalie_team_lookup, by = c("gameId", "goaliePlayerId")) %>%
-    dplyr::select(gameId, eventId, shooterPlayerId, shooterTeamId, goalieTeamId)
-
   existing %>%
-    dplyr::select(-dplyr::any_of(c("shooterPlayerId", "shooterTeamId", "goalieTeamId"))) %>%
-    dplyr::left_join(context, by = c("gameId", "eventId")) %>%
-    dplyr::select(
-      goaliePlayerId,
-      gameId,
-      eventId,
-      strengthState,
-      xCoordNorm,
-      yCoordNorm,
-      isRush,
-      isRebound,
-      isCorsi,
-      isFenwick,
-      isShot,
-      isGoal,
-      xG,
-      shooterPlayerId,
-      shooterTeamId,
-      goalieTeamId
-    ) %>%
     dplyr::arrange(goaliePlayerId, gameId, eventId)
 }
 

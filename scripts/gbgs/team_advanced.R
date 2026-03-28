@@ -6,6 +6,10 @@ SEASON <- as.integer(season_env)
 source(file.path("scripts", "sbss", "shared.R"))
 source(file.path("scripts", "gbgs", "shared_advanced.R"))
 
+aggregate_path <- file.path("data", "gbgs", "advanced", paste0("teams_", SEASON, ".csv"))
+existing <- load_existing_gbg_file(aggregate_path)
+existing_game_ids <- extract_existing_game_ids(existing)
+
 season_game_ids <- readr::read_csv(
   file.path("data", "games.csv"),
   show_col_types = FALSE
@@ -19,6 +23,13 @@ season_game_ids <- readr::read_csv(
   unique() %>%
   sort()
 
+missing_game_ids <- setdiff(season_game_ids, existing_game_ids)
+
+if (length(missing_game_ids) == 0L) {
+  cat("No missing team advanced GBG games to append.\n")
+  quit(save = "no", status = 0)
+}
+
 cat("Loading team GBG base...\n")
 base <- readr::read_csv(
   file.path("data", "gbgs", "basic", paste0("teams_", SEASON, ".csv")),
@@ -28,7 +39,7 @@ base <- readr::read_csv(
     teamId = as.integer(teamId),
     gameId = as.integer(gameId)
   ) %>%
-  dplyr::filter(gameId %in% season_game_ids)
+  dplyr::filter(gameId %in% missing_game_ids)
 
 opponents <- base %>%
   dplyr::distinct(gameId, teamId) %>%
@@ -51,7 +62,7 @@ attempts <- readr::read_csv(
     strengthFor = normalize_gbg_strength(strengthState),
     xG = as.numeric(xG)
   ) %>%
-  dplyr::filter(gameId %in% season_game_ids) %>%
+  dplyr::filter(gameId %in% missing_game_ids) %>%
   dplyr::mutate(strengthAgainst = flip_strength_code(strengthFor)) %>%
   dplyr::filter(strengthFor %in% c("ev", "pp", "sh"))
 
@@ -85,8 +96,8 @@ teams <- build_gbg_output(
   metrics = c("xGF", "xGA")
 )
 
-aggregate_path <- file.path("data", "gbgs", "advanced", paste0("teams_", SEASON, ".csv"))
 dir.create(dirname(aggregate_path), recursive = TRUE, showWarnings = FALSE)
+teams <- append_gbg_rows(existing, teams, id_cols = c("teamId", "gameId"))
 readr::write_csv(teams, aggregate_path)
 
 cat("Wrote season file:", aggregate_path, "\n")

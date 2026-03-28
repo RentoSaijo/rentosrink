@@ -18,14 +18,14 @@ bucket_from_code <- function(code, is_empty_net_against = NULL) {
   if (!is.null(is_empty_net_against)) {
     return(dplyr::case_when(
       is_empty_net_against ~ 'Empty-Net Context',
-      code %in% c('0101', '1010') ~ 'Shootout / Penalty Shot',
+      code %in% c('0101', '1010') ~ 'Penalty Shot',
       code == '1551' ~ 'Standard 5v5',
       TRUE ~ 'Special Teams'
     ))
   }
 
   dplyr::case_when(
-    code %in% c('0101', '1010') ~ 'Shootout / Penalty Shot',
+    code %in% c('0101', '1010') ~ 'Penalty Shot',
     code == '1551' ~ 'Standard 5v5',
     d2 == '0' | d4 == '0' ~ 'Empty-Net Context',
     TRUE ~ 'Special Teams'
@@ -94,7 +94,7 @@ bucket_levels <- c(
   'Standard 5v5',
   'Special Teams',
   'Empty-Net Context',
-  'Shootout / Penalty Shot'
+  'Penalty Shot'
 )
 
 partition_by_season <- shots %>%

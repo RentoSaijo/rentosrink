@@ -2,9 +2,13 @@
 
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(nhlscraper))
+source(file.path("scripts", "gbgs", "shared_advanced.R"))
 
 season_env <- Sys.getenv("SEASON", unset = "20252026")
 SEASON <- as.integer(season_env)
+season_path <- file.path("data", "gbgs", "basic", paste0("teams_", SEASON, ".csv"))
+existing <- load_existing_gbg_file(season_path)
+existing_game_ids <- extract_existing_game_ids(existing)
 
 # ----- Helpers ----- #
 
@@ -37,7 +41,7 @@ derive_strength_state <- function(strength_state, situation_code, game_type_id, 
   sc <- normalize_situation_code(situation_code)
   is_shootout <- !is.na(game_type_id) & !is.na(period_number) & game_type_id == 2L & period_number == 5L
   is_penalty_shot <- !is.na(sc) & sc %in% c("0101", "1010") & !is_shootout
-  out[is.na(out)] <- "ev"
+  out[is.na(sc)] <- "ev"
   out[is_penalty_shot] <- "ev"
   out
 }
@@ -218,6 +222,19 @@ played_games <- pbp %>%
 games <- games %>%
   dplyr::semi_join(played_games, by = c("gameId", "gameTypeId"))
 
+missing_game_ids <- setdiff(sort(unique(as.integer(games$gameId))), existing_game_ids)
+
+if (length(missing_game_ids) == 0L) {
+  cat("No missing team basic GBG games to append.\n")
+  quit(save = "no", status = 0)
+}
+
+games <- games %>%
+  dplyr::filter(gameId %in% missing_game_ids)
+
+pbp <- pbp %>%
+  dplyr::filter(gameId %in% missing_game_ids)
+
 teams_base <- dplyr::bind_rows(
   games %>% dplyr::transmute(teamId = homeTeamId, gameId, gameTypeId, gameDate),
   games %>% dplyr::transmute(teamId = visitingTeamId, gameId, gameTypeId, gameDate)
@@ -245,7 +262,8 @@ team_pp <- dplyr::bind_rows(
     gameId = as.integer(gameId),
     gameTypeId = as.integer(gameTypeId),
     ppMinutes = coerce_report_seconds(timeOnIcePp) / 60
-  )
+  ) %>%
+  dplyr::filter(gameId %in% missing_game_ids)
 
 team_pk <- dplyr::bind_rows(
   nhlscraper::team_game_report(season = SEASON, game_type = 2, category = "penaltykilltime") %>%
@@ -258,7 +276,8 @@ team_pk <- dplyr::bind_rows(
     gameId = as.integer(gameId),
     gameTypeId = as.integer(gameTypeId),
     shMinutes = coerce_report_seconds(timeOnIceShorthanded) / 60
-  )
+  ) %>%
+  dplyr::filter(gameId %in% missing_game_ids)
 
 game_durations <- pbp %>%
   dplyr::group_by(gameId, gameTypeId) %>%
@@ -334,8 +353,7 @@ penalties <- pbp %>% dplyr::filter(typeDescKey == "penalty") %>% dplyr::mutate(v
 
 shots <- pbp %>%
   dplyr::filter(
-    typeDescKey %in% c("goal", "shot-on-goal", "missed-shot", "blocked-shot"),
-    !(typeDescKey == "missed-shot" & reason == "short")
+    typeDescKey %in% c("goal", "shot-on-goal", "missed-shot", "blocked-shot")
   ) %>%
   dplyr::mutate(
     value = 1,
@@ -415,7 +433,7 @@ teams_out <- ensure_cols(teams_out, expected_cols) %>%
 out_dir <- file.path("data", "gbgs", "basic")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-season_path <- file.path(out_dir, paste0("teams_", SEASON, ".csv"))
+teams_out <- append_gbg_rows(existing, teams_out, id_cols = c("teamId", "gameId"))
 readr::write_csv(teams_out, season_path)
 
 cat("Wrote season file:", season_path, "\n")

@@ -19,6 +19,7 @@ PENALTY_RANGE <- c(-7, 2)
 MAX_PENALTY_EXPANSIONS <- 8L
 LOWER_BOUND_ACCEPT_LOG10 <- -7
 LEGACY_MODEL_DIR <- file.path("models", "xG", "legacy")
+LEGACY_DATA_DIR <- file.path(LEGACY_MODEL_DIR, "data")
 LEGACY_RESULTS_DIR <- file.path(LEGACY_MODEL_DIR, "results")
 
 season_id_from_game_id <- function(game_id) {
@@ -75,7 +76,7 @@ expand_penalty_range <- function(penalty_range, boundary_hit, step = 1) {
 load_model_data <- function(dataset, version) {
   model_key <- legacy_model_key(dataset, version)
   seasons <- get_legacy_seasons(version)
-  data_path <- file.path(LEGACY_MODEL_DIR, paste0(model_key, "_train.csv"))
+  data_path <- file.path(LEGACY_DATA_DIR, paste0(model_key, "_train.csv"))
 
   model_data <- readr::read_csv(data_path, show_col_types = FALSE) %>%
     dplyr::mutate(season = season_id_from_game_id(gameId))

@@ -26,32 +26,31 @@ pbp <- nhlscraper::gc_pbps(season) |>
 
 The pipeline in [prepare.R](/Users/rsai_91/Desktop/Work/rentosrink/models/xG/prepare.R) then:
 
-- Keeps the current public-schema names directly, including `eventTypeDescKey`, `periodNumber`, `shotsFor`, `shotDifferential`, `dXCoordNorm`, `dDistancePerSecond`, and `goaliePlayerIdAgainst`.
+- Keeps the current public-schema names directly, including `eventTypeDescKey`, `periodNumber`, `shotsFor`, `shotDifferential`, `dXCoordNorm`, and `dDistancePerSecond`, while canonicalizing goalie identity from `goalieInNetId` first and `goaliePlayerIdAgainst` second.
 - Adds previous-event context (`typeDescKeyPrev`) from the prior event in the same game.
 - Builds custom geometry and context features such as `isBehindNet` and `crossedRoyalRoad`.
 - Builds shift-based features from on-ice skater slots and shift-time columns.
-- Partitions all shots into `sd`, `ev`, `pp`, `sh`, `en`, and `so`.
+- Partitions all shots into `sd`, `ev`, `pp`, `sh`, `en`, and `ps`.
 
 ## Partition Logic
 
-The partitioning is intentionally explicit and should be mirrored in package code. One legacy-specific exception is required: if a non-empty-net, non-shootout row is missing the strength-state inputs needed to classify it, route it to `sd` rather than leaving it unscored.
+The partitioning is intentionally explicit and should be mirrored in package code. Any row that still cannot be partitioned after evaluating the six named states should fall back to `sd` rather than being left unscored. In practice this mostly catches legacy rows with missing or malformed skater-count inputs.
 
 ```r
 is_ps <- situationCode %in% c("1010", "0101")
 is_en <- !is_ps & isEmptyNetAgainst
-is_unclassifiable_strength <- !is_ps & !is_en & (
-  is.na(situationCode) |
-  is.na(skaterCountFor) |
-  is.na(skaterCountAgainst)
-)
-is_sd <- (
+is_sd_standard <- (
   !is_ps & !is_en &
   skaterCountFor == 5 & skaterCountAgainst == 5 &
   !isEmptyNetFor & !isEmptyNetAgainst
-) | is_unclassifiable_strength
-is_ev <- !is_ps & !is_en & skaterCountFor == skaterCountAgainst & !is_sd
+)
+is_ev <- !is_ps & !is_en & skaterCountFor == skaterCountAgainst & !is_sd_standard
 is_pp <- !is_ps & !is_en & skaterCountFor > skaterCountAgainst
 is_sh <- !is_ps & !is_en & skaterCountFor < skaterCountAgainst
+is_uncategorizable_partition <- !(
+  is_ps | is_en | is_sd_standard | is_ev | is_pp | is_sh
+)
+is_sd <- is_sd_standard | is_uncategorizable_partition
 ```
 
 Interpretation:
@@ -61,9 +60,9 @@ Interpretation:
 - `pp`: team shooting with a skater advantage.
 - `sh`: team shooting short-handed.
 - `en`: empty-net-against shots.
-- `so`: shootout and penalty-shot events.
+- `ps`: penalty-shot and shootout-style events.
 
-`so` is intentionally simpler than the other partitions. The other five partitions use richer contextual, delta, and shift-timing features.
+`ps` is intentionally simpler than the other partitions. The other five partitions use richer contextual, delta, and shift-timing features.
 
 ## Feature Families
 
@@ -87,7 +86,7 @@ Current choices:
 - Training seasons: `2023-24` and `2024-25`.
 - Response: binary `isGoal`.
 - Model: ridge logistic regression via `glmnet` with `mixture = 0`.
-- Cross-validation: grouped folds by `gameId` across the full training pool. There is no internal tail holdout anymore.
+- Cross-validation: grouped folds by `gameId` across the full training pool.
 - Final fit: refit on all available `2023-24` and `2024-25` rows after selecting the penalty from grouped CV.
 - Preprocessing: logical predictors converted to `no` / `yes`, string predictors converted to factors, missing categoricals sent to `unknown`, novel categoricals sent to `new`, one-hot dummy expansion, median imputation for numerics, zero-variance term removal, and z-score normalization for numerics.
 
@@ -102,7 +101,7 @@ One implementation detail matters for article-writing and package implementation
 | pp | Power Play | 2023,2024 | 2793 | 38903 | 0.0972932678713724 | 0.0000001 | 0.303556139340419 | 0.669264538566136 | 0.946342577289955 | 0.0851807617637989 | accepted_lower_boundary |
 | sh | Short-Handed | 2023,2024 | 2241 | 5539 | 0.0738400433291208 | 0.0000001 | 0.221051990106459 | 0.796020292767421 | 0.980318920925609 | 0.0627852175246014 | accepted_lower_boundary |
 | en | Empty Net Against | 2023,2024 | 1245 | 1828 | 0.573851203501094 | 0.0788046281566992 | 0.619050049619958 | 0.700180975003345 | 0.599215259469518 | 0.216064913970363 | none |
-| so | Shootout / Penalty Shot | 2023,2024 | 230 | 1188 | 0.315656565656566 | 0.672335753649933 | 0.624135358640592 | 0.526419103398221 | 0.720480968075048 | 0.216268567879362 | none |
+| ps | Penalty Shot | 2023,2024 | 230 | 1188 | 0.315656565656566 | 0.672335753649933 | 0.624135358640592 | 0.526419103398221 | 0.720480968075048 | 0.216268567879362 | none |
 
 The table above is the current training-time summary. These are grouped CV means at the selected penalty, not external test metrics.
 
@@ -145,17 +144,17 @@ The `2025-26` row above is the actual unseen-future result relative to the `2023
 | pp | 12489 | 1192 | 1289.45469974658 | 0.0954439915125318 | 0.103246913987723 | 0.304484173590019 | 0.0844276919723858 | 0.651700396355764 | 0.155445907467866 | 1.08175729844512 | 0.0817572984451175 |
 | sd | 57157 | 3523 | 3637.01678859239 | 0.0616379456514509 | 0.0636323538943026 | 0.205612745001144 | 0.0548317668556206 | 0.761534217696758 | 0.159162683238108 | 1.03236468057092 | 0.0323646805709239 |
 | sh | 1610 | 112 | 132.577689963188 | 0.0695652173913043 | 0.0823463912814831 | 0.219823116893889 | 0.0624490083401214 | 0.784393238434164 | 0.164424527473264 | 1.18372937467132 | 0.183729374671323 |
-| so | 559 | 184 | 177.055350493301 | 0.329159212880143 | 0.316736762957604 | 0.633589954411776 | 0.220856461776991 | 0.513107629992654 | 0.330673865549001 | 0.962257339637503 | 0.0377426603624969 |
+| ps | 559 | 184 | 177.055350493301 | 0.329159212880143 | 0.316736762957604 | 0.633589954411776 | 0.220856461776991 | 0.513107629992654 | 0.330673865549001 | 0.962257339637503 | 0.0377426603624969 |
 
 ## Practical Interpretation
 
 - The ridge rebuild is partition-specific rather than one-size-fits-all.
 - The package model still uses rich spatial, temporal, contextual, and player-biometrics features.
-- `sd`, `pp`, and `sh` still prefer almost no shrinkage under grouped CV, while `ev`, `en`, and especially `so` prefer more noticeable regularization.
+- `sd`, `pp`, and `sh` still prefer almost no shrinkage under grouped CV, while `ev`, `en`, and especially `ps` prefer more noticeable regularization.
 - `sd` remains the dominant high-volume partition, and the unseen-future `2025-26` test kept it reasonably calibrated with `xG / goals = 1.0324` and `ROC AUC = 0.7615`.
 - Overall `2025-26` calibration is slightly high at `1.0465`, driven mostly by `ev`, `pp`, and `sh` overprediction.
 - The strongest `2025-26` discrimination among non-empty-net hockey states is still `sh` by ROC AUC, but its sample is much smaller than `sd`.
-- `so` remains structurally different and less stable; its future-season ROC AUC was `0.5131`.
+- `ps` remains structurally different and less stable; its future-season ROC AUC was `0.5131`.
 
 ## Suggested Article Framing
 

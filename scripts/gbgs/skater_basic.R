@@ -2,9 +2,13 @@
 
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(nhlscraper))
+source(file.path("scripts", "gbgs", "shared_advanced.R"))
 
 season_env <- Sys.getenv("SEASON", unset = "20252026")
 SEASON <- as.integer(season_env)
+season_path <- file.path("data", "gbgs", "basic", paste0("skaters_", SEASON, ".csv"))
+existing <- load_existing_gbg_file(season_path)
+existing_game_ids <- extract_existing_game_ids(existing)
 
 # ----- Helpers ----- #
 
@@ -43,7 +47,7 @@ derive_strength_state <- function(strength_state, situation_code, game_type_id, 
   sc <- normalize_situation_code(situation_code)
   is_shootout <- !is.na(game_type_id) & !is.na(period_number) & game_type_id == 2L & period_number == 5L
   is_penalty_shot <- !is.na(sc) & sc %in% c("0101", "1010") & !is_shootout
-  out[is.na(out)] <- "ev"
+  out[is.na(sc)] <- "ev"
   out[is_penalty_shot] <- "ev"
   out
 }
@@ -374,10 +378,13 @@ pbp <- pbp %>%
     createdReboundFlag = dplyr::coalesce(as.logical(createdRebound), FALSE)
   )
 
+available_game_ids <- sort(unique(as.integer(pbp$gameId)))
+
 pbp$playerIdsFor <- collect_player_ids(pbp, "^skater[0-9]+PlayerIdFor$")
 pbp$playerIdsAgainst <- collect_player_ids(pbp, "^skater[0-9]+PlayerIdAgainst$")
 
 goalie_ids <- sort(unique(c(
+  if ("goalieInNetId" %in% names(pbp)) suppressWarnings(as.integer(pbp$goalieInNetId)),
   suppressWarnings(as.integer(pbp$goaliePlayerIdFor)),
   suppressWarnings(as.integer(pbp$goaliePlayerIdAgainst)),
   suppressWarnings(as.integer(pbp$homeGoaliePlayerId)),
@@ -389,7 +396,8 @@ cat("Loading TOI and game-date data...\n")
 toi_long <- dplyr::bind_rows(
   safe_skater_game_toi(SEASON, 2L),
   safe_skater_game_toi(SEASON, 3L)
-)
+) %>%
+  dplyr::filter(gameId %in% available_game_ids)
 skater_ids <- sort(unique(toi_long$playerId))
 
 games <- nhlscraper::games() %>%
@@ -400,7 +408,24 @@ games <- nhlscraper::games() %>%
     gameDate = as.Date(gameDate),
     homeTeamId = as.integer(homeTeamId),
     visitingTeamId = as.integer(visitingTeamId)
-  )
+  ) %>%
+  dplyr::filter(gameId %in% available_game_ids)
+
+missing_game_ids <- setdiff(sort(unique(as.integer(games$gameId))), existing_game_ids)
+
+if (length(missing_game_ids) == 0L) {
+  cat("No missing skater basic GBG games to append.\n")
+  quit(save = "no", status = 0)
+}
+
+pbp <- pbp %>%
+  dplyr::filter(gameId %in% missing_game_ids)
+
+toi_long <- toi_long %>%
+  dplyr::filter(gameId %in% missing_game_ids)
+
+games <- games %>%
+  dplyr::filter(gameId %in% missing_game_ids)
 
 season_team_lookup <- nhlscraper::teams() %>%
   dplyr::transmute(
@@ -515,8 +540,7 @@ metric_longs <- c(metric_longs, list(
 
 shots <- pbp %>%
   dplyr::filter(
-    typeDescKey %in% c("goal", "shot-on-goal", "missed-shot", "blocked-shot"),
-    !(typeDescKey == "missed-shot" & reason == "short")
+    typeDescKey %in% c("goal", "shot-on-goal", "missed-shot", "blocked-shot")
   ) %>%
   dplyr::mutate(
     value = 1,
@@ -630,8 +654,7 @@ if (length(skater_ids) > 0L) {
 out_dir <- file.path("data", "gbgs", "basic")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-season_path <- file.path(out_dir, paste0("skaters_", SEASON, ".csv"))
-
+skaters <- append_gbg_rows(existing, skaters, id_cols = c("playerId", "gameId", "teamId"))
 readr::write_csv(skaters, season_path)
 
 cat("Wrote season file:", season_path, "\n")

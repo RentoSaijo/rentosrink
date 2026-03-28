@@ -5,7 +5,7 @@ This document is the package-handoff spec for implementing the ridge-based xG mo
 ## Training Scope
 
 - Training seasons: `2023-24` and `2024-25`.
-- Internal training regime: grouped cross-validation by `gameId` across the full training pool. There is no longer any internal `2024-25` tail holdout in this repo.
+- Internal training regime: grouped cross-validation by `gameId` across the full training pool.
 - External holdout: `2025-26` via [test.R](/Users/rsai_91/Desktop/Work/rentosrink/models/xG/nhlscraper/test.R), aligned with [compare.R](/Users/rsai_91/Desktop/Work/rentosrink/models/xG/compare.R).
 - Model family: ridge logistic regression (`glmnet`, `mixture = 0`).
 - Preprocessing during training: string-to-factor, `unknown` fill for missing categoricals, `new` bucket for novel categoricals, one-hot dummying, median imputation for numerics, zero-variance removal, z-score normalization for numerics.
@@ -25,33 +25,32 @@ pbp <- nhlscraper::gc_pbps(season) |>
 
 Required public-schema columns expected by the model builder:
 
-- `eventTypeDescKey`, `goaliePlayerIdAgainst`, `periodNumber`, `shotsFor`, `shotsAgainst`, `shotDifferential`
+- `eventTypeDescKey`, goalie identity resolved from `goalieInNetId` first and `goaliePlayerIdAgainst` second, `periodNumber`, `shotsFor`, `shotsAgainst`, `shotDifferential`
 - `dXCoordNorm`, `dYCoordNorm`, `dDistance`, `dAngle`, `dSecondsElapsedInSequence`
 - `dXCoordNormPerSecond`, `dYCoordNormPerSecond`, `dDistancePerSecond`, `dAnglePerSecond`
 
 ## Partition Logic
 
-Use the exact partition logic below before scoring. For legacy rows that still do not have enough strength-state information to map cleanly, force the row into `sd` after ruling out `so` and `en`.
+Use the exact partition logic below before scoring. Any row that is still uncategorizable after ruling out `ps`, `en`, `sd`, `ev`, `pp`, and `sh` should default to `sd`. In practice this mostly means missing or unparseable skater counts on legacy rows.
 
 ```r
 is_ps <- situationCode %in% c("1010", "0101")
 is_en <- !is_ps & isEmptyNetAgainst
-is_unclassifiable_strength <- !is_ps & !is_en & (
-  is.na(situationCode) |
-  is.na(skaterCountFor) |
-  is.na(skaterCountAgainst)
-)
-is_sd <- (
+is_sd_standard <- (
   !is_ps & !is_en &
   skaterCountFor == 5 & skaterCountAgainst == 5 &
   !isEmptyNetFor & !isEmptyNetAgainst
-) | is_unclassifiable_strength
-is_ev <- !is_ps & !is_en & skaterCountFor == skaterCountAgainst & !is_sd
+)
+is_ev <- !is_ps & !is_en & skaterCountFor == skaterCountAgainst & !is_sd_standard
 is_pp <- !is_ps & !is_en & skaterCountFor > skaterCountAgainst
 is_sh <- !is_ps & !is_en & skaterCountFor < skaterCountAgainst
+is_uncategorizable_partition <- !(
+  is_ps | is_en | is_sd_standard | is_ev | is_pp | is_sh
+)
+is_sd <- is_sd_standard | is_uncategorizable_partition
 
 partition <- dplyr::case_when(
-  is_ps ~ "so",
+  is_ps ~ "ps",
   is_en ~ "en",
   is_sd ~ "sd",
   is_ev ~ "ev",
@@ -61,7 +60,7 @@ partition <- dplyr::case_when(
 )
 ```
 
-This fallback exists because older source seasons can contain a very small number of shot rows with missing `situationCode` and skater-count fields. The package implementation should still emit an xG for those rows instead of dropping them.
+This fallback exists because older source seasons can contain a very small number of shot rows with missing or malformed skater-count fields. The package implementation should still emit an xG for those rows instead of dropping them.
 
 ## Engineered Features Required Before Scoring
 
@@ -71,6 +70,7 @@ This fallback exists because older source seasons can contain a very small numbe
 - Shift summary features: min/max/avg shift time and since-last-shift time for both teams, excluding goalies.
 - Shooter-specific shift features: `shooterSecondsElapsedInShift`, `shooterSecondsElapsedSinceLastShift`.
 - `shootingPlayerId`: `coalesce(shootingPlayerId, scoringPlayerId)`.
+- `goaliePlayerIdAgainst`: canonicalize goalie identity by preferring `goalieInNetId` and then falling back to `goaliePlayerIdAgainst` before goalie biometrics or scoring.
 - `shotType`: normalize to `backhand`, `deflected`, `slap`, `snap`, `tip-in`, `wrist`, else `other`.
 
 ## Runtime Preprocessing Contract
@@ -152,7 +152,7 @@ calculate_expected_goals_ridge <- function(pbp) {
 | pp | Power Play | 2023,2024 | 2793 | 38903 | 0.0972932678713724 | 0.0000001 | 0.303556139340419 | 0.669264538566136 | 0.946342577289955 | 0.0851807617637989 | accepted_lower_boundary |
 | sh | Short-Handed | 2023,2024 | 2241 | 5539 | 0.0738400433291208 | 0.0000001 | 0.221051990106459 | 0.796020292767421 | 0.980318920925609 | 0.0627852175246014 | accepted_lower_boundary |
 | en | Empty Net Against | 2023,2024 | 1245 | 1828 | 0.573851203501094 | 0.0788046281566992 | 0.619050049619958 | 0.700180975003345 | 0.599215259469518 | 0.216064913970363 | none |
-| so | Shootout / Penalty Shot | 2023,2024 | 230 | 1188 | 0.315656565656566 | 0.672335753649933 | 0.624135358640592 | 0.526419103398221 | 0.720480968075048 | 0.216268567879362 | none |
+| ps | Penalty Shot | 2023,2024 | 230 | 1188 | 0.315656565656566 | 0.672335753649933 | 0.624135358640592 | 0.526419103398221 | 0.720480968075048 | 0.216268567879362 | none |
 
 The `cv_*` columns above are grouped cross-validation means at the selected penalty. They are tuning diagnostics, not external `2025-26` test metrics.
 
@@ -177,7 +177,7 @@ True unseen-future `2025-26` results by partition:
 | pp | 12489 | 1192 | 1289.45469974658 | 0.0954439915125318 | 0.103246913987723 | 0.304484173590019 | 0.0844276919723858 | 0.651700396355764 | 0.155445907467866 | 1.08175729844512 | 0.0817572984451175 |
 | sd | 57157 | 3523 | 3637.01678859239 | 0.0616379456514509 | 0.0636323538943026 | 0.205612745001144 | 0.0548317668556206 | 0.761534217696758 | 0.159162683238108 | 1.03236468057092 | 0.0323646805709239 |
 | sh | 1610 | 112 | 132.577689963188 | 0.0695652173913043 | 0.0823463912814831 | 0.219823116893889 | 0.0624490083401214 | 0.784393238434164 | 0.164424527473264 | 1.18372937467132 | 0.183729374671323 |
-| so | 559 | 184 | 177.055350493301 | 0.329159212880143 | 0.316736762957604 | 0.633589954411776 | 0.220856461776991 | 0.513107629992654 | 0.330673865549001 | 0.962257339637503 | 0.0377426603624969 |
+| ps | 559 | 184 | 177.055350493301 | 0.329159212880143 | 0.316736762957604 | 0.633589954411776 | 0.220856461776991 | 0.513107629992654 | 0.330673865549001 | 0.962257339637503 | 0.0377426603624969 |
 
 ## Partition Specs
 
@@ -2937,7 +2937,7 @@ Zero-variance terms removed before fitting:
 | strengthState_unknown |
 | strengthState_new |
 
-## SO: Shootout / Penalty Shot
+## PS: Penalty Shot
 
 - Raw predictor columns: `isPlayoff`, `isHome`, `xCoordNorm`, `yCoordNorm`, `distance`, `angle`, `shotType`, `goalsFor`, `goalsAgainst`, `goalDifferential`, `shotsFor`, `shotsAgainst`, `shotDifferential`, `fenwickFor`, `fenwickAgainst`, `fenwickDifferential`, `corsiFor`, `corsiAgainst`, `corsiDifferential`, `shooterHeight`, `shooterWeight`, `shooterHandCode`, `shooterPositionCode`, `shooterAge`, `goalieHeight`, `goalieWeight`, `goalieHandCode`, `goalieAge`
 - Best penalty (`glmnet` lambda): `0.672335753649933`
