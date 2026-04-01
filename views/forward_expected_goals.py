@@ -491,7 +491,7 @@ available_team_ids = (
 )
 available_teams = teams.loc[teams['teamId'].isin(available_team_ids)].copy().sort_values('teamTriCode')
 team_options = available_teams['teamTriCode'].tolist()
-filter_team_col, filter_download_col, filter_card_col = st.columns([1, 0.9, 0.9], gap='small', vertical_alignment='bottom')
+filter_team_col, filter_minutes_col, filter_download_col, filter_card_col = st.columns([1, 1, 0.9, 0.9], gap='small', vertical_alignment='bottom')
 team_filter_key = 'feg_team_filter'
 valid_selected_teams = [team for team in st.session_state.get(team_filter_key, []) if team in team_options]
 if team_filter_key in st.session_state and st.session_state.get(team_filter_key) != valid_selected_teams:
@@ -519,6 +519,18 @@ player_totals['playerFullName'] = player_totals['playerFullName'].fillna(player_
 player_totals['playerMenuName'] = player_totals['playerMenuName'].fillna(player_totals['playerId'].astype(str))
 player_totals['positionGroup'] = player_totals['positionGroup'].fillna('Forwards')
 player_totals = player_totals.loc[player_totals['positionGroup'] == POSITION_GROUP].copy()
+
+minutes_slider_max = _slider_max(player_totals['minutes']) if 'minutes' in player_totals else 0
+
+with filter_minutes_col:
+    min_minutes_played = _threshold_slider(
+        'Minimum Minutes Played',
+        minutes_slider_max,
+        _minutes_slider_default(player_totals['minutes'], situation_code),
+        'feg_min_minutes_played',
+    )
+
+player_totals = player_totals.loc[player_totals['minutes'] >= float(min_minutes_played)].copy()
 
 player_totals['iGF'] = _display_series(player_totals, 'iGF', category_code, situation_code)
 player_totals['ixGF'] = _display_series(player_totals, 'ixGF', category_code, situation_code)
@@ -562,7 +574,7 @@ if not ranked_players.empty:
             game_type_label=game_type_label,
             situation_label=situation_label,
             selected_teams=selected_teams,
-            minimum_filter_label=None,
+            minimum_filter_label=f'{int(min_minutes_played)} Min. Minutes Played',
             lower_is_better=ascending,
             range_start_date=selected_start_date,
             range_end_date=selected_end_date,
