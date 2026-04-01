@@ -372,6 +372,8 @@ def _sorted_rankings(df_in: pd.DataFrame, statistic: str, lower_is_better: bool)
     name_cols = ['playerMenuName', 'teamId', statistic]
     if 'playerFullName' in df_in.columns:
         name_cols.insert(1, 'playerFullName')
+    if 'cardName' in df_in.columns:
+        name_cols.insert(1, 'cardName')
     source = df_in[name_cols].copy()
     source[statistic] = pd.to_numeric(source[statistic], errors='coerce')
     source['playerMenuName'] = source['playerMenuName'].fillna('').astype(str).str.strip()
@@ -407,9 +409,11 @@ def _draw_player_rows(
         if pd.notna(team_id):
             _paste_contained_image(canvas, TEAM_LOGO_TEMPLATE.format(team_id=int(team_id)), logo_x, row_y, _s(51), _s(51))
 
-        full_name = row.get('playerFullName', '') if 'playerFullName' in rows.columns else ''
-        compact_name = _format_compact_name(full_name or row.get('playerMenuName', ''))
-        display_name = _truncate_text(draw, compact_name, row_font, NAME_BOX_WIDTH)
+        display_name = row.get('cardName', '') if 'cardName' in rows.columns else ''
+        if pd.isna(display_name) or not str(display_name).strip():
+            full_name = row.get('playerFullName', '') if 'playerFullName' in rows.columns else ''
+            display_name = _format_compact_name(full_name or row.get('playerMenuName', ''))
+        display_name = _truncate_text(draw, str(display_name), row_font, NAME_BOX_WIDTH)
         name_left, name_top, _, _ = _text_bounds(draw, display_name, row_font)
         name_y = row_y + _s(4) + int((ROW_TEXT_HEIGHT - _text_size(draw, display_name, row_font)[1]) / 2) - name_top
         draw.text((name_x - name_left, name_y), display_name, font=row_font, fill=CARD_WHITE)
@@ -443,7 +447,7 @@ def build_ranking_card_png(
     game_type_label: str,
     situation_label: str,
     selected_teams: list[str] | tuple[str, ...] | None,
-    minimum_filter_label: str,
+    minimum_filter_label: str | None,
     lower_is_better: bool,
     range_start_date,
     range_end_date,
@@ -461,7 +465,10 @@ def build_ranking_card_png(
 
     title = f'Top & Bottom 12 {position_label} by {title_statistic_label or statistic}'
     teams_label = _sanitize_teams_label(selected_teams)
-    subtitle = SUBTITLE_SEPARATOR.join((season_label, game_type_label, situation_label, teams_label, minimum_filter_label))
+    subtitle_parts = [season_label, game_type_label, situation_label, teams_label]
+    if minimum_filter_label:
+        subtitle_parts.append(minimum_filter_label)
+    subtitle = SUBTITLE_SEPARATOR.join(subtitle_parts)
 
     _draw_single_line_text(draw, title, TITLE_BOX, bold=True, align='center', max_size=_s(64))
     _draw_single_line_text(draw, subtitle, SUBTITLE_BOX, bold=True, align='center', max_size=_s(32))

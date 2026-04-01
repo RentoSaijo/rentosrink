@@ -39,6 +39,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8476917,Adam Pelech,Adam Pelech,CAN,1994-08-16,75,212,L,D,3,2
 8482197,Adam Raska,Adam Raska,CZE,2001-09-25,70,178,R,R,51,30
 8480008,Adam Ruzicka,Adam Ruzicka,SVK,1999-05-11,76,215,L,C,83,53
+8483669,Adam Sykora,Adam Sykora,SVK,2004-09-07,71,193,L,L,38,3
 8479530,Adam Werner,Adam Werner,SWE,1997-05-02,77,205,L,G,35,20
 8476330,Adam Wilcox,Adam Wilcox,USA,1992-11-26,72,189,L,G,32,7
 8482482,Adam Wilsby,Adam Wilsby,SWE,2000-08-07,73,188,L,D,83,18
@@ -100,7 +101,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8482222,Alexander Barabanov,Alexander Barabanov,RUS,1994-06-17,70,195,L,L,94,28
 8475788,Alexander Burmistrov,Alexander Burmistrov,RUS,1991-10-21,73,180,L,C,42,23
 8471303,Alexander Edler,Alexander Edler,SWE,1986-04-21,76,210,L,D,2,26
-8482125,Alexander Holtz,Alexander Holtz,SWE,2002-01-23,72,198,R,R,26,54
+8482125,Alexander Holtz,Alexander Holtz,SWE,2002-01-23,72,198,R,R,11,54
 8477021,Alexander Kerfoot,Alexander Kerfoot,CAN,1994-08-11,71,185,L,C,15,68
 8482100,Alexander Nikishin,Alexander Nikishin,RUS,2001-10-02,75,218,L,D,21,12
 8479423,Alexander Nylander,Alexander Nylander,SWE,1998-03-02,73,205,R,L,92,10
@@ -218,6 +219,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8477289,Anton Belov,Anton Belov,RUS,1986-07-29,76,218,L,D,77,22
 8477320,Anton Blidh,Anton Blidh,SWE,1995-03-14,73,191,L,L,25,3
 8476341,Anton Forsberg,Anton Forsberg,SWE,1992-11-27,75,200,L,G,31,26
+8485391,Anton Frondell,Anton Frondell,SWE,2007-05-07,73,198,L,C,16,16
 8471418,Anton Khudobin,Anton Khudobin,RUS,1986-05-07,71,210,L,G,31,16
 8475165,Anton Lander,Anton Lander,SWE,1991-04-24,72,184,L,C,51,22
 8483641,Anton Levtchi,Anton Levtchi,FIN,1995-11-28,72,185,L,L,76,13
@@ -292,7 +294,6 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8479416,Benjamin Gleason,Benjamin Gleason,USA,1998-03-25,73,190,L,D,41,30
 8473600,Benn Ferriero,Benn Ferriero,USA,1987-04-29,71,195,R,R,77,19
 8471678,Benoit Pouliot,Benoit Pouliot,CAN,1986-09-29,75,200,L,L,67,7
-8480870,Benoit-Olivier Groulx,Benoit-Olivier Groulx,CAN,2000-02-06,74,202,L,C,29,10
 8484800,Berkly Catton,Berkly Catton,CAN,2006-01-14,70,179,L,C,27,55
 8475833,Bill Arnold,Bill Arnold,USA,1992-05-13,72,193,R,C,46,20
 8474035,Bill Sweatt,Bill Sweatt,USA,1988-09-21,72,190,L,L,42,23
@@ -308,6 +309,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8476370,Blake Pietila,Blake Pietila,USA,1993-02-20,71,200,L,L,56,24
 8478480,Blake Speers,Blake Speers,CAN,1997-01-02,71,185,R,C,39,53
 8471218,Blake Wheeler,Blake Wheeler,USA,1986-08-31,77,222,R,R,17,3
+8480870,Bo Groulx,Bo Groulx,CAN,2000-02-06,74,202,L,C,29,10
 8477500,Bo Horvat,Bo Horvat,CAN,1995-04-05,73,225,L,C,14,2
 8481553,Bobby Brink,Bobby Brink,USA,2001-07-08,68,169,R,R,10,30
 8475637,Bobby Butler,Bobby Butler,USA,1987-04-26,72,189,R,R,26,13
@@ -528,13 +530,14 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8476211,Carter Camper,Carter Camper,USA,1988-07-06,69,176,R,C,NA,1
 8479394,Carter Hart,Carter Hart,CAN,1998-08-13,74,196,L,G,79,54
 8475622,Carter Hutton,Carter Hutton,CAN,1985-12-19,72,211,L,G,40,10
-8482802,Carter Mazur,Carter Mazur,USA,2002-03-28,72,200,R,L,43,17
+8482802,Carter Mazur,Carter Mazur,USA,2002-03-28,72,200,R,L,34,17
 8477240,Carter Rowney,Carter Rowney,CAN,1989-05-10,74,208,R,C,37,17
 8477409,Carter Verhaeghe,Carter Verhaeghe,CAN,1995-08-14,74,183,L,C,23,13
+8484759,Carter Yakemchuk,Carter Yakemchuk,CAN,2005-09-29,75,219,R,D,58,9
 8478376,Casey Bailey,Casey Bailey,USA,1991-10-27,75,195,R,R,37,9
 8475231,Casey Cizikas,Casey Cizikas,CAN,1991-02-27,71,191,L,C,53,2
 8479193,Casey DeSmith,Casey DeSmith,USA,1991-08-13,72,188,L,G,1,25
-8479578,Casey Fitzgerald,Casey Fitzgerald,USA,1997-02-25,71,188,R,D,45,3
+8479578,Casey Fitzgerald,Casey Fitzgerald,USA,1997-02-25,71,188,R,D,NA,3
 8479999,Casey Mittelstadt,Casey Mittelstadt,USA,1998-11-22,73,205,L,C,11,6
 8479268,Casey Nelson,Casey Nelson,USA,1992-07-18,73,185,R,D,8,7
 8475602,Casey Wellman,Casey Wellman,USA,1987-10-18,72,173,R,C,48,15
@@ -629,6 +632,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8478367,Cole Bardreau,Cole Bardreau,USA,1993-07-22,70,184,R,C,54,2
 8481540,Cole Caufield,Cole Caufield,USA,2001-01-02,68,175,R,R,13,8
 8480252,Cole Guttman,Cole Guttman,USA,1999-04-06,69,167,R,C,82,26
+8484873,Cole Hutson,Cole Hutson,USA,2006-06-28,71,175,L,D,44,15
 8481043,Cole Koepke,Cole Koepke,USA,1998-05-17,73,207,L,L,45,52
 8484287,Cole McWard,Cole McWard,USA,2001-06-09,74,196,R,D,4,2
 8482149,Cole Perfetti,Cole Perfetti,CAN,2002-01-01,71,185,L,C,91,52
@@ -884,6 +888,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8470787,Drew Bagnall,Drew Bagnall,CAN,1983-10-26,75,220,L,D,24,7
 8482123,Drew Commesso,Drew Commesso,USA,2002-07-19,74,180,L,G,33,16
 8474563,Drew Doughty,Drew Doughty,CAN,1989-12-08,73,210,R,D,8,26
+8484169,Drew Fortescue,Drew Fortescue,USA,2005-04-28,74,195,L,D,45,3
 8481563,Drew Helleson,Drew Helleson,USA,2001-03-26,75,208,R,D,14,24
 8477243,Drew LeBlanc,Drew LeBlanc,USA,1989-06-29,72,194,L,C,14,16
 8469569,Drew MacIntyre,Drew MacIntyre,CAN,1983-06-24,73,190,L,G,NA,16
@@ -909,6 +914,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8482663,Dylan Duke,Dylan Duke,USA,2003-03-04,70,184,L,L,53,14
 8480263,Dylan Ferguson,Dylan Ferguson,CAN,1998-09-20,74,194,L,G,33,30
 8479580,Dylan Gambrell,Dylan Gambrell,USA,1996-08-26,72,191,R,C,18,29
+8482193,Dylan Garand,Dylan Garand,CAN,2002-06-07,73,185,L,G,33,3
 8482699,Dylan Guenther,Dylan Guenther,CAN,2003-04-10,73,191,R,R,11,68
 8482077,Dylan Holloway,Dylan Holloway,CAN,2001-09-23,73,207,L,L,81,19
 8477946,Dylan Larkin,Dylan Larkin,USA,1996-07-30,73,204,L,C,71,17
@@ -1054,7 +1060,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8475291,Garrett Mitchell,Garrett Mitchell,CAN,1991-09-02,71,198,R,R,76,15
 8479516,Garrett Pilon,Garrett Pilon,CAN,1998-04-13,71,209,R,C,45,9
 8471011,Garrett Stafford,Garrett Stafford,USA,1980-01-28,73,207,R,D,36,22
-8475253,Garrett Wilson,Garrett Wilson,CAN,1991-03-16,75,218,L,L,87,4
+8475253,Garrett Wilson,Garrett Wilson,CAN,1991-03-16,75,218,L,L,10,4
 8479945,Gavin Bayreuther,Gavin Bayreuther,USA,1994-05-12,74,210,L,D,25,7
 8484149,Gavin Brindley,Gavin Brindley,USA,2004-10-05,68,173,R,C,54,21
 8476966,Gemel Smith,Gemel Smith,CAN,1994-04-16,70,203,L,C,64,14
@@ -1119,12 +1125,12 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8483452,Hunter Haight,Hunter Haight,CAN,2004-04-04,70,173,R,C,37,30
 8484125,Hunter McKown,Hunter McKown,USA,2002-08-18,73,192,R,C,41,29
 8480112,Hunter Miska,Hunter Miska,USA,1995-07-07,73,175,L,G,32,21
-8482411,Hunter Shepard,Hunter Shepard,USA,1995-11-07,71,225,L,G,31,9
+8482411,Hunter Shepard,Hunter Shepard,USA,1995-11-07,71,225,L,G,31,8
 8477445,Hunter Shinkaruk,Hunter Shinkaruk,CAN,1994-10-13,70,181,L,C,45,8
 8481715,Hunter Skinner,Hunter Skinner,USA,2001-04-29,75,195,R,D,48,19
 8474013,Ian Cole,Ian Cole,USA,1989-02-21,73,237,L,D,28,68
 8477452,Ian McCoshen,Ian McCoshen,USA,1995-08-05,75,218,L,D,78,30
-8480070,Ian Mitchell,Ian Mitchell,CAN,1999-01-18,71,198,R,D,NA,17
+8480070,Ian Mitchell,Ian Mitchell,CAN,1999-01-18,71,198,R,D,NA,14
 8482178,Ian Moore,Ian Moore,USA,2002-01-04,75,205,R,D,3,24
 8470273,Ian White,Ian White,CAN,1984-06-04,70,191,R,D,18,17
 8484994,Igor Chernyshov,Igor Chernyshov,RUS,2005-11-30,74,195,R,L,92,28
@@ -1262,7 +1268,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8476467,Jamie Oleksiak,Jamie Oleksiak,CAN,1992-12-21,79,252,L,D,24,55
 8470704,Jamie Tardif,Jamie Tardif,CAN,1985-01-23,72,199,R,R,68,7
 8470699,Jan Hejda,Jan Hejda,CZE,1978-06-18,76,230,L,D,8,21
-8480890,Jan Jenik,Jan Jenik,CZE,2000-09-15,73,204,L,C,14,9
+8480890,Jan Jenik,Jan Jenik,CZE,2000-09-15,73,204,L,C,14,26
 8473569,Jan Mursak,Jan Mursak,SVN,1988-01-20,71,190,R,L,39,17
 8480172,Jan Rutta,Jan Rutta,CZE,1990-07-29,75,204,R,D,84,28
 8475825,Jani Hakanpää,Jani Hakanpää,FIN,1992-03-31,79,225,R,D,28,10
@@ -1525,6 +1531,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8469547,Jordin Tootoo,Jordin Tootoo,CAN,1983-02-02,69,195,R,R,22,16
 8479115,Jorge Alves,Jorge Alves,USA,1979-01-30,69,185,L,G,NA,12
 8474627,Jori Lehtera,Jori Lehtera,FIN,1987-12-23,74,212,L,C,15,4
+8483435,Jorian Donovan,Jorian Donovan,CAN,2004-04-05,73,200,L,D,56,9
 8460535,Jose Theodore,Jose Theodore,CAN,1976-09-13,71,172,R,G,60,13
 8480373,Josef Korenar,Josef Korenar,CZE,1998-01-31,73,185,L,G,32,68
 8477010,Joseph Blandisi,Joseph Blandisi,CAN,1994-07-18,72,184,L,C,47,8
@@ -1731,7 +1738,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8482447,Leevi Meriläinen,Leevi Meriläinen,FIN,2002-08-13,74,196,L,G,1,9
 8473414,Leland Irving,Leland Irving,CAN,1988-04-11,72,177,L,G,37,20
 8471402,Lennart Petrell,Lennart Petrell,FIN,1984-04-13,75,215,L,L,37,22
-8484177,Lenni Hameenaho,Lenni Hameenaho,FIN,2004-11-07,72,173,R,R,29,1
+8484177,Lenni Hameenaho,Lenni Hameenaho,FIN,2004-11-07,73,195,R,R,29,1
 8484153,Leo Carlsson,Leo Carlsson,SWE,2004-12-26,75,208,L,C,91,24
 8473463,Leo Komarov,Leo Komarov,FIN,1987-01-23,71,205,L,R,47,2
 8477934,Leon Draisaitl,Leon Draisaitl,DEU,1995-10-27,74,209,L,C,29,22
@@ -1780,7 +1787,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8482141,Lukas Cormier,Lukas Cormier,CAN,2002-03-27,71,184,L,D,51,54
 8480843,Lukas Dostal,Lukas Dostal,CZE,2000-06-22,74,190,L,G,1,24
 8480780,Lukas Radil,Lukas Radil,CZE,1990-08-05,76,205,R,C,52,28
-8482117,Lukas Reichel,Lukas Reichel,DEU,2002-05-17,72,170,L,L,73,6
+8482117,Lukas Reichel,Lukas Reichel,DEU,2002-05-17,72,170,L,L,75,6
 8481751,Lukas Rousek,Lukas Rousek,CZE,1999-04-20,71,202,L,R,13,7
 8476310,Lukas Sedlak,Lukas Sedlak,CZE,1993-02-25,72,205,L,C,23,4
 8478838,Lukas Vejdemo,Lukas Vejdemo,SWE,1996-01-25,73,198,L,C,42,8
@@ -2065,7 +2072,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8479415,Michael McLeod,Michael McLeod,CAN,1998-02-03,74,190,R,C,20,1
 8478933,Michael McNiven,Michael McNiven,CAN,1997-07-09,73,199,L,G,70,9
 8476352,Michael Mersch,Michael Mersch,USA,1992-10-02,74,210,L,L,52,25
-8482829,Michael Milne,Michael Milne,CAN,2002-09-21,71,185,L,L,60,14
+8482829,Michael Milne,Michael Milne,CAN,2002-09-21,71,185,L,L,60,17
 8485402,Michael Misa,Michael Misa,CAN,2007-02-16,73,185,L,C,77,28
 8476394,Michael Paliotta,Michael Paliotta,USA,1993-04-06,76,207,R,D,44,3
 8479543,Michael Pezzetta,Michael Pezzetta,CAN,1998-03-13,73,222,L,L,61,10
@@ -2092,6 +2099,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8482451,Mikael Pyyhtia,Mikael Pyyhtia,FIN,2001-12-17,72,178,L,L,82,29
 8467463,Mikael Samuelsson,Mikael Samuelsson,SWE,1976-12-23,74,218,R,R,37,17
 8471916,Mike Angelidis,Mike Angelidis,CAN,1985-06-27,73,214,L,L,10,14
+8482107,Mike Benning,Mike Benning,CAN,2002-01-05,69,185,R,D,20,13
 8471663,Mike Blunden,Mike Blunden,CAN,1986-12-15,76,217,R,R,20,9
 8470800,Mike Brodeur,Mike Brodeur,CAN,1983-03-30,74,185,L,G,29,9
 8471371,Mike Brown,Mike Brown,USA,1985-06-24,71,205,R,R,13,8
@@ -2182,7 +2190,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8475172,Nazem Kadri,Nazem Kadri,CAN,1990-10-06,72,185,L,C,91,21
 8480145,Neal Pionk,Neal Pionk,USA,1995-07-29,72,190,R,D,4,52
 8478031,Nelson Nogier,Nelson Nogier,CAN,1996-05-27,74,191,R,D,62,26
-8475343,Nic Dowd,Nic Dowd,USA,1990-05-27,74,195,R,C,62,54
+8475343,Nic Dowd,Nic Dowd,USA,1990-05-27,74,195,R,C,26,54
 8477464,Nic Petan,Nic Petan,CAN,1995-03-22,69,175,L,C,19,3
 8481720,Nicholas Abruzzese,Nicholas Abruzzese,USA,1999-06-04,70,178,L,C,6,14
 8481582,Nicholas Robertson,Nicholas Robertson,USA,2001-09-11,69,180,L,L,89,10
@@ -2435,6 +2443,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8480459,Pius Suter,Pius Suter,CHE,1996-05-24,71,172,L,C,22,19
 8476857,Pontus Aberg,Pontus Aberg,SWE,1993-09-23,72,194,R,L,46,9
 8480995,Pontus Holmberg,Pontus Holmberg,SWE,1999-03-09,72,201,L,R,29,14
+8485406,Porter Martone,Porter Martone,CAN,2006-10-26,75,214,R,R,94,4
 8481611,Pyotr Kochetkov,Pyotr Kochetkov,RUS,1999-06-25,75,196,L,G,52,12
 8480800,Quinn Hughes,Quinn Hughes,USA,1999-10-14,70,180,L,D,43,30
 8485511,Quinn Hutson,Quinn Hutson,USA,2002-01-01,71,176,R,R,23,22
@@ -2504,8 +2513,8 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8467972,Rob Zepp,Rob Zepp,CAN,1981-09-07,74,198,L,G,72,4
 8471399,Robbie Earl,Robbie Earl,USA,1985-06-02,73,195,L,L,38,30
 8476418,Robbie Russo,Robbie Russo,USA,1993-02-15,72,190,R,D,39,1
+8477952,Robby Fabbri,Robby Fabbri,CAN,1996-01-22,71,185,L,C,21,30
 8474145,Robert Bortuzzo,Robert Bortuzzo,CAN,1989-03-18,76,206,R,D,41,68
-8477952,Robert Fabbri,Robert Fabbri,CAN,1996-01-22,71,185,L,C,21,30
 8477462,Robert Hagg,Robert Hagg,SWE,1995-02-08,74,210,L,D,18,54
 8480023,Robert Thomas,Robert Thomas,CAN,1999-07-02,72,207,R,C,18,19
 8466141,Roberto Luongo,Roberto Luongo,CAN,1979-04-04,75,215,L,G,1,13
@@ -2601,6 +2610,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8482751,Ryan Winterton,Ryan Winterton,CAN,2003-09-04,74,175,R,C,26,55
 8469622,Ryane Clowe,Ryane Clowe,CAN,1982-09-30,75,225,L,L,NA,1
 8482858,Ryker Evans,Ryker Evans,CAN,2001-12-13,72,195,L,D,41,55
+8484793,Sacha Boisvert,Sacha Boisvert,CAN,2006-03-17,74,176,L,C,12,16
 8459442,Saku Koivu,Saku Koivu,FIN,1974-11-23,70,181,L,C,11,24
 8477357,Saku Maenalanen,Saku Maenalanen,FIN,1994-05-29,76,214,L,R,8,52
 8477935,Sam Bennett,Sam Bennett,CAN,1996-06-20,73,193,L,C,9,13
@@ -2608,7 +2618,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8482118,Sam Colangelo,Sam Colangelo,USA,2001-12-26,74,213,R,R,12,24
 8484806,Sam Dickinson,Sam Dickinson,CAN,2006-06-07,75,200,L,D,6,28
 8474040,Sam Gagner,Sam Gagner,CAN,1989-08-10,71,200,R,C,15,22
-8478043,Sam Lafferty,Sam Lafferty,USA,1995-03-06,74,205,R,C,81,16
+8478043,Sam Lafferty,Sam Lafferty,USA,1995-03-06,74,205,R,C,24,16
 8484258,Sam Malinski,Sam Malinski,USA,1998-07-27,71,190,R,D,70,21
 8484821,Sam Morton,Sam Morton,USA,1999-07-28,72,185,L,C,45,20
 8477933,Sam Reinhart,Sam Reinhart,CAN,1995-11-06,73,196,R,C,13,13
@@ -2622,7 +2632,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8480267,Sammy Walker,Sammy Walker,USA,1999-06-07,70,180,R,C,18,68
 8480846,Sampo Ranta,Sampo Ranta,FIN,2000-05-31,74,195,L,L,75,21
 8478104,Samuel Blais,Samuel Blais,CAN,1996-06-17,74,206,L,L,27,8
-8481541,Samuel Bolduc,Samuel Bolduc,CAN,2000-12-09,76,224,L,D,58,26
+8481541,Samuel Bolduc,Samuel Bolduc,CAN,2000-12-09,76,224,L,D,58,9
 8481035,Samuel Ersson,Samuel Ersson,SWE,1999-10-20,75,194,L,G,33,4
 8481239,Samuel Fagemo,Samuel Fagemo,SWE,2000-03-14,72,200,R,L,16,52
 8479398,Samuel Girard,Samuel Girard,CAN,1998-05-12,70,170,L,D,49,5
@@ -2955,6 +2965,7 @@ playerId,playerFullName,playerMenuName,nationality,birthDate,height,weight,handC
 8477399,Tyrell Goulbourne,Tyrell Goulbourne,CAN,1994-01-26,71,203,L,L,12,54
 8475197,Tyson Barrie,Tyson Barrie,CAN,1991-07-26,71,197,R,D,8,20
 8482159,Tyson Foerster,Tyson Foerster,CAN,2002-01-18,74,215,R,R,71,4
+8486056,Tyson Gross,Tyson Gross,CAN,2002-09-23,75,195,R,C,39,20
 8479370,Tyson Jost,Tyson Jost,CAN,1998-03-14,71,187,L,C,17,18
 8482896,Tyson Kozak,Tyson Kozak,CAN,2002-12-29,71,185,L,C,48,7
 8470729,Tyson Strachan,Tyson Strachan,CAN,1984-10-30,75,210,R,D,28,30

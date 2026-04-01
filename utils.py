@@ -102,6 +102,14 @@ def load_gbgs_goalie_advanced(season = 20242025):
     path = f'data/gbgs/advanced/goalies_{season}.csv'
     return _read_csv(path, _file_cache_token(path))
 
+def load_gbgs_team_basic(season = 20242025):
+    path = f'data/gbgs/basic/teams_{season}.csv'
+    return _read_csv(path, _file_cache_token(path))
+
+def load_gbgs_team_advanced(season = 20242025):
+    path = f'data/gbgs/advanced/teams_{season}.csv'
+    return _read_csv(path, _file_cache_token(path))
+
 def load_sbss_skaters(season = 20242025):
     path = f'data/sbss/skaters_{season}.csv'
     return _read_csv(path, _file_cache_token(path))

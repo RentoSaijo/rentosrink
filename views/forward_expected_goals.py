@@ -37,8 +37,8 @@ GBGS_STRENGTHS = {
     'sh': ['sh'],
     'all': ['ev', 'pp', 'sh'],
 }
-STATISTICS = ['iGF', 'ixGF', 'iGFAx', 'oGF', 'oxGF', 'oxGFAx', 'oxGA', 'oxG%']
-DEFAULT_STATISTIC = 'oxG%'
+STATISTICS = ['iGF', 'ixGF', 'iGFAx', 'oGF', 'oxGF', 'oxGFAx', 'oxGA', 'xGF%']
+DEFAULT_STATISTIC = 'xGF%'
 LOWER_IS_BETTER = {'oxGA'}
 
 
@@ -349,7 +349,7 @@ def _render_bar_chart(df_in: pd.DataFrame, statistic: str, title: str, x_range: 
     chart_data['displayLabel'] = chart_data['playerMenuName'].astype(str).map(_chart_player_label)
 
     labels = {'playerMenuName': '', statistic: statistic}
-    if statistic == 'oxG%':
+    if statistic == 'xGF%':
         values = pd.to_numeric(chart_data[statistic], errors='coerce').fillna(50.0)
         colors = [
             POSITIVE_BAR_COLOR if value > 50.0 else NEGATIVE_BAR_COLOR if value < 50.0 else NEUTRAL_BAR_COLOR
@@ -491,7 +491,7 @@ available_team_ids = (
 )
 available_teams = teams.loc[teams['teamId'].isin(available_team_ids)].copy().sort_values('teamTriCode')
 team_options = available_teams['teamTriCode'].tolist()
-filter_team_col, filter_minutes_col, filter_download_col, filter_card_col = st.columns([1, 1, 0.9, 0.9], gap='small', vertical_alignment='bottom')
+filter_team_col, filter_download_col, filter_card_col = st.columns([1, 0.9, 0.9], gap='small', vertical_alignment='bottom')
 team_filter_key = 'feg_team_filter'
 valid_selected_teams = [team for team in st.session_state.get(team_filter_key, []) if team in team_options]
 if team_filter_key in st.session_state and st.session_state.get(team_filter_key) != valid_selected_teams:
@@ -520,18 +520,6 @@ player_totals['playerMenuName'] = player_totals['playerMenuName'].fillna(player_
 player_totals['positionGroup'] = player_totals['positionGroup'].fillna('Forwards')
 player_totals = player_totals.loc[player_totals['positionGroup'] == POSITION_GROUP].copy()
 
-minutes_slider_max = _slider_max(player_totals['minutes']) if 'minutes' in player_totals else 0
-
-with filter_minutes_col:
-    min_minutes_played = _threshold_slider(
-        'Minimum Minutes Played',
-        minutes_slider_max,
-        _minutes_slider_default(player_totals['minutes'], situation_code),
-        'feg_min_minutes_played',
-    )
-
-player_totals = player_totals.loc[player_totals['minutes'] >= float(min_minutes_played)].copy()
-
 player_totals['iGF'] = _display_series(player_totals, 'iGF', category_code, situation_code)
 player_totals['ixGF'] = _display_series(player_totals, 'ixGF', category_code, situation_code)
 player_totals['iGFAx'] = player_totals['iGF'] - player_totals['ixGF']
@@ -539,7 +527,7 @@ player_totals['oGF'] = _display_series(player_totals, 'oGF', category_code, situ
 player_totals['oxGF'] = _display_series(player_totals, 'oxGF', category_code, situation_code)
 player_totals['oxGFAx'] = player_totals['oGF'] - player_totals['oxGF']
 player_totals['oxGA'] = _display_series(player_totals, 'oxGA', category_code, situation_code)
-player_totals['oxG%'] = (
+player_totals['xGF%'] = (
     player_totals['oxGF']
     .div((player_totals['oxGF'] + player_totals['oxGA']).where((player_totals['oxGF'] + player_totals['oxGA']) > 0))
     .mul(100.0)
@@ -554,13 +542,13 @@ ranked_players = ranked_players.sort_values([statistic_label, 'playerMenuName'],
 
 top_5 = ranked_players.head(CHART_COUNT).copy()
 bottom_5 = ranked_players.sort_values([statistic_label, 'playerMenuName'], ascending=[not ascending, True]).head(CHART_COUNT)
-top_chart_range = _midpoint_axis_range(top_5.get('oxG%', pd.Series(dtype=float)), midpoint=50.0, padding=5.0, lower_bound=0.0, upper_bound=100.0)
-bottom_chart_range = _midpoint_axis_range(bottom_5.get('oxG%', pd.Series(dtype=float)), midpoint=50.0, padding=5.0, lower_bound=0.0, upper_bound=100.0)
+top_chart_range = _midpoint_axis_range(top_5.get('xGF%', pd.Series(dtype=float)), midpoint=50.0, padding=5.0, lower_bound=0.0, upper_bound=100.0)
+bottom_chart_range = _midpoint_axis_range(bottom_5.get('xGF%', pd.Series(dtype=float)), midpoint=50.0, padding=5.0, lower_bound=0.0, upper_bound=100.0)
 
 table = ranked_players.drop(columns=['teamId'], errors='ignore').copy()
 for col in ['iGF', 'ixGF', 'iGFAx', 'oGF', 'oxGF', 'oxGFAx', 'oxGA']:
     table[col] = table[col].map(lambda value: _fmt_value(value, category_code))
-table['oxG%'] = table['oxG%'].map(lambda value: round(float(value), 1) if pd.notna(value) else 0.0)
+table['xGF%'] = table['xGF%'].map(lambda value: round(float(value), 1) if pd.notna(value) else 0.0)
 
 card_png_bytes = None
 card_error = None
@@ -574,7 +562,7 @@ if not ranked_players.empty:
             game_type_label=game_type_label,
             situation_label=situation_label,
             selected_teams=selected_teams,
-            minimum_filter_label=f'{int(min_minutes_played)} Min. Minutes Played',
+            minimum_filter_label=None,
             lower_is_better=ascending,
             range_start_date=selected_start_date,
             range_end_date=selected_end_date,
@@ -614,7 +602,7 @@ else:
     chart_left, chart_right = st.columns(2, gap='small')
     with chart_left:
         with st.container(border=True):
-            _render_bar_chart(top_5, statistic_label, f'Top {CHART_COUNT} by {statistic_label}', x_range=top_chart_range if statistic_label == 'oxG%' else None)
+            _render_bar_chart(top_5, statistic_label, f'Top {CHART_COUNT} by {statistic_label}', x_range=top_chart_range if statistic_label == 'xGF%' else None)
     with chart_right:
         with st.container(border=True):
-            _render_bar_chart(bottom_5, statistic_label, f'Bottom {CHART_COUNT} by {statistic_label}', x_range=bottom_chart_range if statistic_label == 'oxG%' else None)
+            _render_bar_chart(bottom_5, statistic_label, f'Bottom {CHART_COUNT} by {statistic_label}', x_range=bottom_chart_range if statistic_label == 'xGF%' else None)

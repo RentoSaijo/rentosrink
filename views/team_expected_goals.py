@@ -8,13 +8,11 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from ranking_card import build_ranking_card_png
-from utils import file_data_url, load_biographies, load_games, load_gbgs_skater_advanced, load_gbgs_skater_basic, load_teams
+from utils import file_data_url, load_games, load_gbgs_team_advanced, load_gbgs_team_basic, load_teams
 
 
 SEASON_START = 20112012
 SEASON_END = 20252026
-POSITION_GROUP = 'Defensemen'
-TABLE_HEIGHT = int(35 * 4.5)
 CHART_HEIGHT = 500
 CHART_COUNT = 6
 POSITIVE_BAR_COLOR = 'rgba(90,220,120,0.9)'
@@ -37,9 +35,9 @@ GBGS_STRENGTHS = {
     'sh': ['sh'],
     'all': ['ev', 'pp', 'sh'],
 }
-STATISTICS = ['iGF', 'ixGF', 'iGFAx', 'oGF', 'oxGF', 'oxGFAx', 'oxGA', 'xGF%']
+STATISTICS = ['GF', 'xGF', 'xGFAx', 'xGA', 'xGF%', 'GA', 'GSAx']
 DEFAULT_STATISTIC = 'xGF%'
-LOWER_IS_BETTER = {'oxGA'}
+LOWER_IS_BETTER = {'xGA', 'GA'}
 
 
 def _season_ids(start: int, end: int) -> list[str]:
@@ -77,38 +75,26 @@ def _prepare_games(df_in: pd.DataFrame) -> pd.DataFrame:
     return games
 
 
-def _prepare_biographies(df_in: pd.DataFrame) -> pd.DataFrame:
-    bio = df_in.copy()
-    bio['playerId'] = pd.to_numeric(bio.get('playerId'), errors='coerce')
-    bio = bio.dropna(subset=['playerId']).copy()
-    bio['playerId'] = bio['playerId'].astype('int64')
-    bio['playerMenuName'] = bio.get('playerMenuName', bio.get('playerFullName', '')).astype(str).str.strip()
-    bio['positionCode'] = bio.get('positionCode', '').astype(str).str.strip().str.upper()
-    bio = bio.loc[bio['positionCode'] != 'G'].copy()
-    bio['positionGroup'] = bio['positionCode'].apply(lambda value: 'Defensemen' if value == 'D' else 'Forwards')
-    return bio
-
-
 def _prepare_basic(df_in: pd.DataFrame) -> pd.DataFrame:
     basic = df_in.copy()
-    basic['playerId'] = pd.to_numeric(basic.get('playerId'), errors='coerce')
+    basic['teamId'] = pd.to_numeric(basic.get('teamId'), errors='coerce')
     basic['gameId'] = pd.to_numeric(basic.get('gameId'), errors='coerce')
-    basic = basic.dropna(subset=['playerId', 'gameId']).copy()
-    basic['playerId'] = basic['playerId'].astype('int64')
+    basic = basic.dropna(subset=['teamId', 'gameId']).copy()
+    basic['teamId'] = basic['teamId'].astype('int64')
     basic['gameId'] = basic['gameId'].astype('int64')
-    basic = _coerce_numeric_columns(basic, exclude={'playerId', 'gameId', 'gameDate'})
+    basic = _coerce_numeric_columns(basic, exclude={'teamId', 'gameId', 'gameDate'})
     basic = basic.drop(columns=['gameDate'], errors='ignore')
     return basic
 
 
 def _prepare_advanced(df_in: pd.DataFrame) -> pd.DataFrame:
     advanced = df_in.copy()
-    advanced['playerId'] = pd.to_numeric(advanced.get('playerId'), errors='coerce')
+    advanced['teamId'] = pd.to_numeric(advanced.get('teamId'), errors='coerce')
     advanced['gameId'] = pd.to_numeric(advanced.get('gameId'), errors='coerce')
-    advanced = advanced.dropna(subset=['playerId', 'gameId']).copy()
-    advanced['playerId'] = advanced['playerId'].astype('int64')
+    advanced = advanced.dropna(subset=['teamId', 'gameId']).copy()
+    advanced['teamId'] = advanced['teamId'].astype('int64')
     advanced['gameId'] = advanced['gameId'].astype('int64')
-    advanced = _coerce_numeric_columns(advanced, exclude={'playerId', 'gameId'})
+    advanced = _coerce_numeric_columns(advanced, exclude={'teamId', 'gameId'})
     return advanced
 
 
@@ -118,29 +104,29 @@ def _prepare_teams(df_in: pd.DataFrame) -> pd.DataFrame:
     teams = teams.dropna(subset=['teamId']).copy()
     teams['teamId'] = teams['teamId'].astype('int64')
     teams['teamTriCode'] = teams.get('teamTriCode', teams.get('teamTriCodeRaw', '')).astype(str).str.strip().str.upper()
+    teams['teamFullName'] = teams.get('teamFullName', '').astype(str).str.strip()
     teams = teams.loc[teams['teamTriCode'] != ''].copy()
-    return teams[['teamId', 'teamTriCode']].drop_duplicates().sort_values('teamTriCode').reset_index(drop=True)
+    return teams[['teamId', 'teamTriCode', 'teamFullName']].drop_duplicates().sort_values('teamTriCode').reset_index(drop=True)
 
 
-def _player_team_map(df_in: pd.DataFrame) -> pd.DataFrame:
-    if df_in.empty or 'teamId' not in df_in.columns:
-        return pd.DataFrame(columns=['playerId', 'teamId'])
-    team_rows = df_in[['playerId', 'teamId', 'gameId']].copy()
-    team_rows['playerId'] = pd.to_numeric(team_rows['playerId'], errors='coerce')
-    team_rows['teamId'] = pd.to_numeric(team_rows['teamId'], errors='coerce')
-    team_rows['gameId'] = pd.to_numeric(team_rows['gameId'], errors='coerce')
-    team_rows = team_rows.dropna(subset=['playerId', 'teamId', 'gameId']).copy()
-    if team_rows.empty:
-        return pd.DataFrame(columns=['playerId', 'teamId'])
-    team_rows['playerId'] = team_rows['playerId'].astype('int64')
-    team_rows['teamId'] = team_rows['teamId'].astype('int64')
-    team_rows['gameId'] = team_rows['gameId'].astype('int64')
-    counts = (
-        team_rows.groupby(['playerId', 'teamId'], as_index=False)
-        .agg(games=('gameId', 'nunique'), latestGameId=('gameId', 'max'))
-        .sort_values(['playerId', 'games', 'latestGameId', 'teamId'], ascending=[True, False, False, True])
-    )
-    return counts.drop_duplicates('playerId')[['playerId', 'teamId']].reset_index(drop=True)
+TWO_WORD_TEAM_SUFFIXES = {
+    'Blue Jackets',
+    'Golden Knights',
+    'Maple Leafs',
+    'Red Wings',
+}
+
+
+def _compact_team_name(full_name: str) -> str:
+    parts = [part for part in str(full_name).strip().split() if part]
+    if len(parts) <= 1:
+        return str(full_name).strip()
+
+    suffix_size = 1
+    if len(parts) >= 3 and ' '.join(parts[-2:]) in TWO_WORD_TEAM_SUFFIXES:
+        suffix_size = 2
+
+    return ' '.join(parts[-suffix_size:])
 
 
 @st.cache_data
@@ -148,15 +134,15 @@ def _load_page_data(season_id: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.Data
     games = _prepare_games(load_games())
     games = games.loc[games['seasonId'] == int(season_id)].copy()
 
-    basic = _prepare_basic(load_gbgs_skater_basic(season_id))
-    advanced = _prepare_advanced(load_gbgs_skater_advanced(season_id))
-    skater_games = basic.merge(advanced, on=['playerId', 'gameId'], how='left', suffixes=('', '_adv'))
+    basic = _prepare_basic(load_gbgs_team_basic(season_id))
+    advanced = _prepare_advanced(load_gbgs_team_advanced(season_id))
+    team_games = basic.merge(advanced, on=['teamId', 'gameId'], how='left', suffixes=('', '_adv'))
 
     game_meta = games[['gameId', 'gameDate', 'gameTypeId', 'seasonId']].drop_duplicates()
-    skater_games = skater_games.merge(game_meta, on='gameId', how='left')
-    bio = _prepare_biographies(load_biographies())
+    team_games = team_games.merge(game_meta, on='gameId', how='left')
+    teams = _prepare_teams(load_teams())
 
-    return games, skater_games, bio
+    return games, team_games, teams
 
 
 def _strength_suffixes(situation_code: str) -> list[str]:
@@ -183,11 +169,11 @@ def _display_series(df_in: pd.DataFrame, base_metric: str, category_code: str, s
     return scaled.replace([float('inf'), float('-inf')], 0.0).fillna(0.0)
 
 
-def _aggregate_players(df_in: pd.DataFrame) -> pd.DataFrame:
+def _aggregate_teams(df_in: pd.DataFrame) -> pd.DataFrame:
     if df_in.empty:
-        return pd.DataFrame(columns=['playerId'])
-    numeric_cols = [col for col in df_in.columns if col not in {'playerId', 'gameId', 'gameDate', 'gameTypeId', 'seasonId', 'teamId', 'teamId_adv'}]
-    return df_in.groupby('playerId', as_index=False)[numeric_cols].sum()
+        return pd.DataFrame(columns=['teamId'])
+    numeric_cols = [col for col in df_in.columns if col not in {'teamId', 'gameId', 'gameDate', 'gameTypeId', 'seasonId'}]
+    return df_in.groupby('teamId', as_index=False)[numeric_cols].sum()
 
 
 def _date_tuple(value) -> tuple[dt.date | None, dt.date | None]:
@@ -221,48 +207,6 @@ def _fmt_value(value: float, category_code: str) -> float | int:
 
 def _stat_ascending(statistic: str) -> bool:
     return statistic in LOWER_IS_BETTER
-
-
-def _slider_max(series: pd.Series) -> int:
-    if series.empty:
-        return 0
-    return max(0, int(pd.to_numeric(series, errors='coerce').fillna(0).max()))
-
-
-def _slider_default_half_max(series: pd.Series) -> int:
-    return _slider_max(series) // 2
-
-
-def _nonzero_slider_values(series: pd.Series) -> pd.Series:
-    if series.empty:
-        return pd.Series(dtype=float)
-    values = pd.to_numeric(series, errors='coerce').fillna(0.0)
-    return values.loc[values > 0]
-
-
-def _slider_default_nonzero_average(series: pd.Series) -> int:
-    values = _nonzero_slider_values(series)
-    if values.empty:
-        return 0
-    return max(0, int(round(float(values.mean()))))
-
-
-def _minutes_slider_default(series: pd.Series, situation_code: str) -> int:
-    return _slider_default_nonzero_average(series)
-
-
-def _threshold_slider(label: str, max_value: int, default_value: int, key: str) -> int:
-    if max_value <= 0:
-        st.slider(label, min_value=0, max_value=1, value=0, step=1, disabled=True, key=key)
-        return 0
-    return st.slider(
-        label,
-        min_value=0,
-        max_value=max_value,
-        value=min(default_value, max_value),
-        step=1,
-        key=key,
-    )
 
 
 def _midpoint_axis_range(
@@ -310,7 +254,7 @@ def _team_logo_data_url(team_id) -> str | None:
     return file_data_url(logo_path)
 
 
-def _chart_player_label(name: str) -> str:
+def _chart_team_label(name: str) -> str:
     return f'{str(name)}{LABEL_PAD}'
 
 
@@ -339,16 +283,15 @@ def _add_team_logos(fig: go.Figure, chart_data: pd.DataFrame) -> None:
 
 
 def _render_bar_chart(df_in: pd.DataFrame, statistic: str, title: str, x_range: tuple[float, float] | None = None) -> None:
-    chart_cols = ['playerMenuName', statistic]
-    if 'teamId' in df_in.columns:
-        chart_cols.append('teamId')
-    chart_data = df_in[chart_cols].dropna(subset=['playerMenuName', statistic]).copy().iloc[::-1].reset_index(drop=True)
+    label_col = 'chartName' if 'chartName' in df_in.columns else 'playerMenuName'
+    chart_cols = [label_col, statistic, 'teamId']
+    chart_data = df_in[chart_cols].dropna(subset=[label_col, statistic]).copy().iloc[::-1].reset_index(drop=True)
     if chart_data.empty:
         st.info(f'No data available for {title.lower()}.')
         return
-    chart_data['displayLabel'] = chart_data['playerMenuName'].astype(str).map(_chart_player_label)
+    chart_data['displayLabel'] = chart_data[label_col].astype(str).map(_chart_team_label)
 
-    labels = {'playerMenuName': '', statistic: statistic}
+    labels = {label_col: '', statistic: statistic}
     if statistic == 'xGF%':
         values = pd.to_numeric(chart_data[statistic], errors='coerce').fillna(50.0)
         colors = [
@@ -362,7 +305,7 @@ def _render_bar_chart(df_in: pd.DataFrame, statistic: str, title: str, x_range: 
                 y=chart_data['displayLabel'].tolist(),
                 orientation='h',
                 marker=dict(color=colors),
-                customdata=chart_data[['playerMenuName', statistic]].to_numpy(),
+                customdata=chart_data[[label_col, statistic]].to_numpy(),
                 text=[f'{value:.1f}%' for value in values],
                 textposition='outside',
                 hovertemplate='%{customdata[0]}<br>%{customdata[1]:.1f}%<extra></extra>',
@@ -380,10 +323,9 @@ def _render_bar_chart(df_in: pd.DataFrame, statistic: str, title: str, x_range: 
             title=title,
             color_discrete_sequence=['#4c78a8'],
             text=statistic,
-            custom_data=['playerMenuName'],
+            custom_data=[label_col],
         )
-        value_format = '%{x:.1f}' if statistic != 'GA' else '%{x:.0f}'
-        fig.update_traces(hovertemplate=f'%{{customdata[0]}}<br>{value_format}<extra></extra>', texttemplate=value_format, textposition='outside')
+        fig.update_traces(hovertemplate='%{customdata[0]}<br>%{x:.1f}<extra></extra>', texttemplate='%{x:.1f}', textposition='outside')
     fig.update_layout(
         height=CHART_HEIGHT,
         margin=dict(l=8, r=8, t=48, b=8),
@@ -406,31 +348,30 @@ season_lookup = {label: label.replace('-', '') for label in season_options}
 c_season, c_game, c_date, c_sit, c_cat, c_stat = st.columns(6, gap='small', vertical_alignment='top')
 
 with c_season:
-    season_label = st.selectbox('Season', season_options, index=0, key='deg_season_label')
+    season_label = st.selectbox('Season', season_options, index=0, key='teg_season_label')
 season_id = season_lookup[season_label]
 
-season_games, season_player_games, bio = _load_page_data(season_id)
-teams = _prepare_teams(load_teams())
+season_games, season_team_games, teams = _load_page_data(season_id)
 
 available_game_types = [label for label, game_type_id in GAME_TYPES.items() if game_type_id in set(season_games['gameTypeId'].unique().tolist())]
 if not available_game_types:
     st.info('No games available for this season.')
     st.stop()
 
-prev_game_type = st.session_state.get('deg_game_type_label')
+prev_game_type = st.session_state.get('teg_game_type_label')
 game_type_index = available_game_types.index(prev_game_type) if prev_game_type in available_game_types else (available_game_types.index('Regular Season') if 'Regular Season' in available_game_types else 0)
 
 with c_game:
-    if st.session_state.get('deg_game_type_label') not in available_game_types:
-        st.session_state['deg_game_type_label'] = available_game_types[game_type_index]
-    game_type_label = st.selectbox('Game Type', available_game_types, index=game_type_index, key='deg_game_type_label')
+    if st.session_state.get('teg_game_type_label') not in available_game_types:
+        st.session_state['teg_game_type_label'] = available_game_types[game_type_index]
+    game_type_label = st.selectbox('Game Type', available_game_types, index=game_type_index, key='teg_game_type_label')
 
 game_type_id = GAME_TYPES[game_type_label]
 game_scope = season_games.loc[season_games['gameTypeId'] == game_type_id].copy().sort_values(['gameDate', 'gameId'])
 
 date_min = game_scope['gameDate'].min()
 date_max = game_scope['gameDate'].max()
-date_range_widget_key = f'deg_date_range_widget_{season_id}_{game_type_id}'
+date_range_widget_key = f'teg_date_range_widget_{season_id}_{game_type_id}'
 
 with c_date:
     if game_scope.empty or pd.isna(date_min) or pd.isna(date_max):
@@ -450,11 +391,11 @@ with c_date:
         selected_start_date, selected_end_date = _clamp_date_range(selected_dates, min_date, max_date)
 
 with c_sit:
-    situation_label = st.selectbox('Situation', list(SITUATIONS.keys()), index=0, key='deg_situation_label')
+    situation_label = st.selectbox('Situation', list(SITUATIONS.keys()), index=0, key='teg_situation_label')
 with c_cat:
-    category_label = st.selectbox('Category', list(CATEGORIES.keys()), index=0, key='deg_category_label')
+    category_label = st.selectbox('Category', list(CATEGORIES.keys()), index=0, key='teg_category_label')
 with c_stat:
-    statistic_label = st.selectbox('Statistic', STATISTICS, index=STATISTICS.index(DEFAULT_STATISTIC), key='deg_statistic_label')
+    statistic_label = st.selectbox('Statistic', STATISTICS, index=STATISTICS.index(DEFAULT_STATISTIC), key='teg_statistic_label')
 
 situation_code = SITUATIONS[situation_label]
 category_code = CATEGORIES[category_label]
@@ -469,30 +410,19 @@ else:
         ].astype('int64').tolist()
     )
 
-filtered_games = season_player_games.loc[season_player_games['gameId'].isin(selected_game_ids)].copy()
-player_totals = _aggregate_players(filtered_games)
-player_totals = player_totals.merge(
-    bio[['playerId', 'playerFullName', 'playerMenuName', 'positionGroup']],
-    on='playerId',
-    how='left',
-)
-player_totals['playerFullName'] = player_totals['playerFullName'].fillna(player_totals['playerMenuName'])
-player_totals['playerMenuName'] = player_totals['playerMenuName'].fillna(player_totals['playerId'].astype(str))
-player_totals['positionGroup'] = player_totals['positionGroup'].fillna('Forwards')
-player_totals = player_totals.loc[player_totals['positionGroup'] == POSITION_GROUP].copy()
-
+filtered_games = season_team_games.loc[season_team_games['gameId'].isin(selected_game_ids)].copy()
 available_team_ids = (
-    pd.to_numeric(season_player_games['teamId'], errors='coerce')
+    pd.to_numeric(filtered_games['teamId'], errors='coerce')
     .dropna()
     .astype('int64')
     .unique()
     .tolist()
-    if 'teamId' in season_player_games.columns else []
+    if 'teamId' in filtered_games.columns else []
 )
 available_teams = teams.loc[teams['teamId'].isin(available_team_ids)].copy().sort_values('teamTriCode')
 team_options = available_teams['teamTriCode'].tolist()
 filter_team_col, filter_download_col, filter_card_col = st.columns([1, 0.9, 0.9], gap='small', vertical_alignment='bottom')
-team_filter_key = 'deg_team_filter'
+team_filter_key = 'teg_team_filter'
 valid_selected_teams = [team for team in st.session_state.get(team_filter_key, []) if team in team_options]
 if team_filter_key in st.session_state and st.session_state.get(team_filter_key) != valid_selected_teams:
     st.session_state[team_filter_key] = valid_selected_teams
@@ -502,62 +432,71 @@ selected_team_ids = set(available_teams.loc[available_teams['teamTriCode'].isin(
 if selected_team_ids:
     filtered_games = filtered_games.loc[pd.to_numeric(filtered_games['teamId'], errors='coerce').isin(selected_team_ids)].copy()
 
-player_totals = _aggregate_players(filtered_games)
-games_played = filtered_games.groupby('playerId')['gameId'].nunique().rename('gamesPlayed').reset_index()
-player_teams = _player_team_map(filtered_games)
-player_totals = player_totals.merge(games_played, on='playerId', how='left')
-player_totals = player_totals.merge(player_teams, on='playerId', how='left')
-player_totals['gamesPlayed'] = pd.to_numeric(player_totals['gamesPlayed'], errors='coerce').fillna(0).astype(int)
-player_totals['minutes'] = _minutes_series(player_totals, situation_code)
+team_totals = _aggregate_teams(filtered_games)
+team_totals['minutes'] = _minutes_series(team_totals, situation_code)
+team_totals = team_totals.loc[team_totals['minutes'] > 0].copy()
+team_totals = team_totals.merge(teams, on='teamId', how='left', suffixes=('', '_team'))
 
-player_totals = player_totals.merge(
-    bio[['playerId', 'playerFullName', 'playerMenuName', 'positionGroup']],
-    on='playerId',
-    how='left',
-)
-player_totals['playerFullName'] = player_totals['playerFullName'].fillna(player_totals['playerMenuName'])
-player_totals['playerMenuName'] = player_totals['playerMenuName'].fillna(player_totals['playerId'].astype(str))
-player_totals['positionGroup'] = player_totals['positionGroup'].fillna('Forwards')
-player_totals = player_totals.loc[player_totals['positionGroup'] == POSITION_GROUP].copy()
+if 'teamTriCode' not in team_totals.columns:
+    for col in ('teamTriCode_team', 'teamTriCode_x', 'teamTriCode_y'):
+        if col in team_totals.columns:
+            team_totals['teamTriCode'] = team_totals[col]
+            break
+if 'teamFullName' not in team_totals.columns:
+    for col in ('teamFullName_team', 'teamFullName_x', 'teamFullName_y'):
+        if col in team_totals.columns:
+            team_totals['teamFullName'] = team_totals[col]
+            break
 
-player_totals['iGF'] = _display_series(player_totals, 'iGF', category_code, situation_code)
-player_totals['ixGF'] = _display_series(player_totals, 'ixGF', category_code, situation_code)
-player_totals['iGFAx'] = player_totals['iGF'] - player_totals['ixGF']
-player_totals['oGF'] = _display_series(player_totals, 'oGF', category_code, situation_code)
-player_totals['oxGF'] = _display_series(player_totals, 'oxGF', category_code, situation_code)
-player_totals['oxGFAx'] = player_totals['oGF'] - player_totals['oxGF']
-player_totals['oxGA'] = _display_series(player_totals, 'oxGA', category_code, situation_code)
-player_totals['xGF%'] = (
-    player_totals['oxGF']
-    .div((player_totals['oxGF'] + player_totals['oxGA']).where((player_totals['oxGF'] + player_totals['oxGA']) > 0))
+if 'teamTriCode' not in team_totals.columns:
+    team_totals['teamTriCode'] = pd.Series(pd.NA, index=team_totals.index, dtype='object')
+if 'teamFullName' not in team_totals.columns:
+    team_totals['teamFullName'] = pd.Series(pd.NA, index=team_totals.index, dtype='object')
+
+team_totals['teamTriCode'] = team_totals['teamTriCode'].fillna(team_totals['teamId'].astype(str))
+team_totals['teamFullName'] = team_totals['teamFullName'].fillna(team_totals['teamTriCode'])
+
+team_totals['GF'] = _display_series(team_totals, 'GF', category_code, situation_code)
+team_totals['xGF'] = _display_series(team_totals, 'xGF', category_code, situation_code)
+team_totals['xGFAx'] = team_totals['GF'] - team_totals['xGF']
+team_totals['GA'] = _display_series(team_totals, 'GA', category_code, situation_code)
+team_totals['xGA'] = _display_series(team_totals, 'xGA', category_code, situation_code)
+team_totals['GSAx'] = team_totals['xGA'] - team_totals['GA']
+team_totals['xGF%'] = (
+    team_totals['xGF']
+    .div((team_totals['xGF'] + team_totals['xGA']).where((team_totals['xGF'] + team_totals['xGA']) > 0))
     .mul(100.0)
     .replace([float('inf'), float('-inf')], 0.0)
     .fillna(0.0)
 )
 
-display_cols = ['playerMenuName', *STATISTICS]
-ranked_players = player_totals[['playerFullName', 'playerMenuName', 'teamId', *STATISTICS]].copy()
+ranked_teams = team_totals[['teamId', 'teamTriCode', 'teamFullName', *STATISTICS]].copy()
+ranked_teams['playerFullName'] = ranked_teams['teamFullName']
+ranked_teams['chartName'] = ranked_teams['teamFullName']
+ranked_teams['playerMenuName'] = ranked_teams['teamFullName'].map(_compact_team_name)
+ranked_teams['cardName'] = ranked_teams['teamFullName'].map(_compact_team_name)
+ranked_teams = ranked_teams[['teamId', 'teamTriCode', 'playerFullName', 'playerMenuName', 'chartName', 'cardName', *STATISTICS]]
 ascending = _stat_ascending(statistic_label)
-ranked_players = ranked_players.sort_values([statistic_label, 'playerMenuName'], ascending=[ascending, True]).reset_index(drop=True)
+ranked_teams = ranked_teams.sort_values([statistic_label, 'chartName'], ascending=[ascending, True]).reset_index(drop=True)
 
-top_5 = ranked_players.head(CHART_COUNT).copy()
-bottom_5 = ranked_players.sort_values([statistic_label, 'playerMenuName'], ascending=[not ascending, True]).head(CHART_COUNT)
+top_5 = ranked_teams.head(CHART_COUNT).copy()
+bottom_5 = ranked_teams.sort_values([statistic_label, 'playerMenuName'], ascending=[not ascending, True]).head(CHART_COUNT)
 top_chart_range = _midpoint_axis_range(top_5.get('xGF%', pd.Series(dtype=float)), midpoint=50.0, padding=5.0, lower_bound=0.0, upper_bound=100.0)
 bottom_chart_range = _midpoint_axis_range(bottom_5.get('xGF%', pd.Series(dtype=float)), midpoint=50.0, padding=5.0, lower_bound=0.0, upper_bound=100.0)
 
-table = ranked_players.drop(columns=['teamId'], errors='ignore').copy()
-for col in ['iGF', 'ixGF', 'iGFAx', 'oGF', 'oxGF', 'oxGFAx', 'oxGA']:
+table = ranked_teams.rename(columns={'chartName': 'teamFullName'}).drop(columns=['teamId', 'playerFullName', 'playerMenuName', 'cardName'], errors='ignore').copy()
+for col in ['GF', 'xGF', 'xGFAx', 'xGA', 'GA', 'GSAx']:
     table[col] = table[col].map(lambda value: _fmt_value(value, category_code))
 table['xGF%'] = table['xGF%'].map(lambda value: round(float(value), 1) if pd.notna(value) else 0.0)
 
 card_png_bytes = None
 card_error = None
-if not ranked_players.empty:
+if not ranked_teams.empty:
     try:
         card_png_bytes = build_ranking_card_png(
-            ranked_df=ranked_players,
+            ranked_df=ranked_teams,
             statistic=statistic_label,
-            position_label='Defensemen',
+            position_label='Teams',
             season_label=season_label,
             game_type_label=game_type_label,
             situation_label=situation_label,
@@ -575,29 +514,29 @@ with filter_download_col:
     st.download_button(
         'Download Full List',
         data=table.to_csv(index=False).encode('utf-8'),
-        file_name=f'defense_expected_goals_{season_id}_{game_type_id}_{situation_code}_{category_code}.csv',
+        file_name=f'team_expected_goals_{season_id}_{game_type_id}_{situation_code}_{category_code}.csv',
         mime='text/csv',
         icon=':material/download:',
         width='stretch',
         disabled=table.empty,
-        key='deg_download_full_list',
+        key='teg_download_full_list',
     )
 with filter_card_col:
     st.download_button(
         'Download Card',
         data=card_png_bytes or b'',
-        file_name=f'defense_expected_goals_card_{season_id}_{game_type_id}_{situation_code}_{category_code}_{statistic_label.lower().replace("%", "pct")}.png',
+        file_name=f'team_expected_goals_card_{season_id}_{game_type_id}_{situation_code}_{category_code}_{statistic_label.lower().replace("%", "pct")}.png',
         mime='image/png',
         icon=':material/download:',
         width='stretch',
         disabled=card_png_bytes is None,
-        key='deg_download_card',
+        key='teg_download_card',
     )
     if card_error:
         st.caption(f'Card export unavailable: {card_error}')
 
 if table.empty:
-    st.info('No defensemen available for this selection.')
+    st.info('No teams available for this selection.')
 else:
     chart_left, chart_right = st.columns(2, gap='small')
     with chart_left:

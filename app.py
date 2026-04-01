@@ -81,6 +81,11 @@ goalie_expected_goals_page = st.Page(
     title = 'Goalie Expected Goals',
     icon  = ':material/leaderboard:'
 )
+team_expected_goals_page = st.Page(
+    page  = 'views/team_expected_goals.py',
+    title = 'Team Expected Goals',
+    icon  = ':material/leaderboard:'
+)
 
 
 # Register all routes, then render custom sidebar links.
@@ -96,6 +101,7 @@ pg = st.navigation(
             forward_expected_goals_page,
             defense_expected_goals_page,
             goalie_expected_goals_page,
+            team_expected_goals_page,
         ],
         'Models': [expected_goals_page, contract_projection_page],
         'Articles': [xg_article_page],
@@ -117,6 +123,7 @@ with st.sidebar:
     st.page_link(forward_expected_goals_page, label='Forward Expected Goals', icon=':material/leaderboard:')
     st.page_link(defense_expected_goals_page, label='Defense Expected Goals', icon=':material/leaderboard:')
     st.page_link(goalie_expected_goals_page, label='Goalie Expected Goals', icon=':material/leaderboard:')
+    st.page_link(team_expected_goals_page, label='Team Expected Goals', icon=':material/leaderboard:')
 
     st.caption('Models')
     st.page_link(expected_goals_page, label='Expected Goal', icon=':material/model_training:')
